@@ -1,0 +1,5 @@
+{
+  "name": "Weatherly Aviation Weather",
+  "description": "A comprehensive aviation weather platform for pilots providing real-time METARs, TAFs, NOTAMs, and flight planning tools.",
+  "requestFramePermissions": []
+}
