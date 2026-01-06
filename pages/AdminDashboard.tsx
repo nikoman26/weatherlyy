@@ -2,6 +2,7 @@ import React from 'react';
 import { useWeatherStore } from '../store/weatherStore.ts';
 import { Shield, Users, Activity, Server, AlertTriangle, Trash2 } from 'lucide-react';
 import ApiKeyManager from '../components/ApiKeyManager.tsx';
+import AirportDataLoader from '../components/AirportDataLoader.tsx';
 
 const AdminDashboard = () => {
   const { allUsers, user, updateUserRole, deleteUser } = useWeatherStore();
@@ -50,9 +51,12 @@ const AdminDashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* API Key Manager */}
         <ApiKeyManager />
+        
+        {/* Airport Data Loader */}
+        <AirportDataLoader />
 
         {/* User Management Table */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+        <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
             <div className="p-6 border-b border-slate-800">
                 <h3 className="text-lg font-bold text-white">User Management</h3>
             </div>

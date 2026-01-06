@@ -58,6 +58,7 @@ interface WeatherStore {
   updateUserRole: (userId: number, role: string) => void;
   deleteUser: (userId: number) => void;
   updateApiKeys: (keys: Partial<ApiKeys>) => Promise<void>;
+  loadAirportData: () => Promise<void>;
 }
 
 // Mock Initial Users
@@ -403,5 +404,17 @@ export const useWeatherStore = create<WeatherStore>((set, get) => ({
           apiKeys: { ...state.apiKeys, ...keys },
           isLoading: false
       }));
+  },
+  
+  loadAirportData: async () => {
+      set({ isLoading: true, error: null });
+      try {
+          await weatherAPI.loadAirportData();
+          set({ isLoading: false });
+      } catch (error) {
+          set({ isLoading: false, error: 'Failed to load airport data.' });
+          console.error('Bulk load failed:', error);
+          throw error;
+      }
   }
 }));

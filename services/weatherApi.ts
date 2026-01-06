@@ -236,6 +236,24 @@ class WeatherAPI {
       return null;
     }
   }
+  
+  // Admin: Load Airport Data (NEW)
+  async loadAirportData(): Promise<any> {
+    try {
+      const data = await this.fetchFromAPI('/admin/load-airports', {
+        method: 'POST',
+      });
+      
+      if (!data.success) {
+        throw new Error(data.message || 'Failed to load airport data');
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Failed to load airport data:', error);
+      throw error;
+    }
+  }
 }
 
 export const weatherAPI = new WeatherAPI();

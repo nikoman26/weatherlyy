@@ -4,8 +4,14 @@ import cors from 'cors';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -421,6 +427,57 @@ app.get('/api/airports', authenticateUser, async (req, res) => {
     });
   }
 });
+
+// Admin route to load airport data (NEW)
+app.post('/api/admin/load-airports', authenticateUser, async (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ success: false, message: 'Forbidden: Admin access required' });
+  }
+
+  try {
+    // Read the JSON file (assuming it's placed in the 'data' directory relative to the server start location)
+    const filePath = path.join(__dirname, 'data/airports.json');
+    const fileContent = await fs.readFile(filePath, 'utf-8');
+    const airports = JSON.parse(fileContent);
+
+    // Prepare data for insertion (Supabase expects an array of objects)
+    const formattedAirports = airports.map(a => ({
+      icao: a.icao,
+      name: a.name,
+      elevation: a.elevation,
+      latitude: a.latitude,
+      longitude: a.longitude,
+      runways: a.runways,
+      frequencies: a.frequencies,
+      procedures: a.procedures,
+    }));
+
+    // Perform bulk upsert (insert or update if ICAO exists)
+    const { error } = await supabase
+      .from('airports')
+      .upsert(formattedAirports, { onConflict: 'icao' });
+
+    if (error) {
+      console.error('Supabase bulk insert error:', error);
+      return res.status(500).json({ success: false, message: 'Failed to insert data into Supabase', error: error.message });
+    }
+
+    res.json({
+      success: true,
+      message: `Successfully loaded ${formattedAirports.length} airports into Supabase.`,
+      data: { count: formattedAirports.length }
+    });
+
+  } catch (error) {
+    console.error('Airport data load error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to process or load airport data',
+      error: error.message
+    });
+  }
+});
+
 
 // Save Flight Plan
 app.post('/api/flight-plans', authenticateUser, async (req, res) => {
