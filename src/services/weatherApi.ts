@@ -1,20 +1,27 @@
 // Real Aviation Weather API Service
-import { MetarData, TafData, Notam, Pirep, AirportDetails, WeatherApiResponse } from '../../types';
+import { MetarData, TafData, Notam, Pirep, AirportDetails } from '../types';
 
 // API Configuration
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 // CheckWX API for METAR/TAF data
 class WeatherAPI {
-  private async fetchFromAPI(endpoint: string, params: Record<string, string> = {}) {
-    const queryParams = new URLSearchParams(params);
-    const url = `${API_BASE_URL}${endpoint}?${queryParams}`;
+  private async fetchFromAPI(endpoint: string, options: RequestInit = {}) {
+    const url = `${API_BASE_URL}${endpoint}`;
     
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
+      });
+      
       if (!response.ok) {
         throw new Error(`API Error: ${response.status} ${response.statusText}`);
       }
+      
       return await response.json();
     } catch (error) {
       console.error(`API request failed for ${endpoint}:`, error);
@@ -25,7 +32,7 @@ class WeatherAPI {
   // Fetch METAR data from CheckWX
   async getMETAR(icao: string): Promise<MetarData> {
     try {
-      const data = await this.fetchFromAPI('/weather/metar', { icao });
+      const data = await this.fetchFromAPI(`/weather/metar?icao=${icao}`);
       
       if (!data.success) {
         throw new Error(data.message || 'Failed to fetch METAR');
@@ -77,7 +84,7 @@ class WeatherAPI {
   // Fetch TAF data from CheckWX
   async getTAF(icao: string): Promise<TafData> {
     try {
-      const data = await this.fetchFromAPI('/weather/taf', { icao });
+      const data = await this.fetchFromAPI(`/weather/taf?icao=${icao}`);
       
       if (!data.success) {
         throw new Error(data.message || 'Failed to fetch TAF');
@@ -122,7 +129,7 @@ class WeatherAPI {
   // Fetch NOTAMs
   async getNOTAMs(icao: string): Promise<Notam[]> {
     try {
-      const data = await this.fetchFromAPI('/notams', { icao });
+      const data = await this.fetchFromAPI(`/notams?icao=${icao}`);
       
       if (!data.success) {
         throw new Error(data.message || 'Failed to fetch NOTAMs');
@@ -148,8 +155,8 @@ class WeatherAPI {
   // Fetch PIREPs
   async getPIREPs(icao?: string): Promise<Pirep[]> {
     try {
-      const params = icao ? { icao } : {};
-      const data = await this.fetchFromAPI('/pireps', params);
+      const query = icao ? `?icao=${icao}` : '';
+      const data = await this.fetchFromAPI(`/pireps${query}`);
       
       if (!data.success) {
         throw new Error(data.message || 'Failed to fetch PIREPs');
@@ -195,10 +202,10 @@ class WeatherAPI {
     }
   }
 
-  // Fetch Airport Details
+  // Fetch Airport Details (Single ICAO)
   async getAirportDetails(icao: string): Promise<AirportDetails | null> {
     try {
-      const data = await this.fetchFromAPI('/airports', { icao });
+      const data = await this.fetchFromAPI(`/airports?icao=${icao}`);
       
       if (!data.success) {
         return null;
@@ -227,6 +234,49 @@ class WeatherAPI {
     } catch (error) {
       console.error(`Failed to fetch airport details for ${icao}:`, error);
       return null;
+    }
+  }
+  
+  // Fetch All Airport Details (Bulk)
+  async getAllAirports(): Promise<AirportDetails[]> {
+    try {
+      const data = await this.fetchFromAPI(`/airports/all`);
+      
+      if (!data.success || !Array.isArray(data.data)) {
+        throw new Error(data.message || 'Failed to fetch all airport data');
+      }
+
+      return data.data.map((airport: any) => ({
+        icao: airport.icao,
+        name: airport.name,
+        elevation: airport.elevation,
+        latitude: airport.latitude,
+        longitude: airport.longitude,
+        runways: airport.runways || [],
+        frequencies: airport.frequencies || [],
+        procedures: airport.procedures || []
+      }));
+    } catch (error) {
+      console.error('Failed to fetch all airport data:', error);
+      throw error;
+    }
+  }
+
+  // Admin: Load Airport Data
+  async loadAirportData(): Promise<any> {
+    try {
+      const data = await this.fetchFromAPI('/admin/load-airports', {
+        method: 'POST',
+      });
+      
+      if (!data.success) {
+        throw new Error(data.message || 'Failed to load airport data');
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Failed to load airport data:', error);
+      throw error;
     }
   }
 }

@@ -1,4 +1,3 @@
-// WEATHERLY Backend API Server with Supabase Integration
 import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
@@ -10,7 +9,7 @@ import { fileURLToPath } from 'url';
 
 dotenv.config();
 
-const __filename = fileURLToURL(import.meta.url);
+const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
@@ -344,7 +343,7 @@ app.post('/api/pireps', authenticateUser, async (req, res) => {
   }
 });
 
-// Fetch Airport Details (Supabase only)
+// Fetch Airport Details (Supabase only - single ICAO)
 app.get('/api/airports', authenticateUser, async (req, res) => {
   try {
     const { icao } = req.query;
@@ -393,6 +392,37 @@ app.get('/api/airports', authenticateUser, async (req, res) => {
     });
   }
 });
+
+// NEW: Fetch All Airport Details (Supabase only - bulk fetch)
+app.get('/api/airports/all', authenticateUser, async (req, res) => {
+  try {
+    // Query Supabase for all airport details
+    const { data: airportData, error } = await supabase
+      .from('airports')
+      .select('*');
+
+    if (error) {
+      console.error('Supabase bulk airport fetch error:', error);
+      return res.status(500).json({ success: false, message: 'Database error fetching all airport details', error: error.message });
+    }
+
+    res.json({
+      success: true,
+      code: 'SUPABASE_ALL',
+      message: 'All airport details retrieved from Supabase',
+      data: airportData
+    });
+
+  } catch (error) {
+    console.error('All airport details fetch error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch all airport details',
+      error: error.message
+    });
+  }
+});
+
 
 // Admin route to load airport data
 app.post('/api/admin/load-airports', authenticateUser, async (req, res) => {
