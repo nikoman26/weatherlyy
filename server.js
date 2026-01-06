@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url';
 
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
+const __filename = fileURLToURL(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
@@ -112,7 +112,7 @@ app.get('/api/auth/profile', authenticateUser, async (req, res) => {
   }
 });
 
-// Fetch METAR data
+// Fetch METAR data (Real API only)
 app.get('/api/weather/metar', authenticateUser, async (req, res) => {
   try {
     const { icao } = req.query;
@@ -124,59 +124,41 @@ app.get('/api/weather/metar', authenticateUser, async (req, res) => {
       });
     }
 
-    // Try external API first
-    try {
-      const checkwxUrl = `https://api.checkwx.com/v1/metar/${icao}/decoded`;
-      
-      const data = await makeApiRequest(checkwxUrl, {
-        headers: {
-          'X-API-Key': API_KEYS.checkwx
-        }
-      });
-
-      if (data && data.data) {
-        return res.json({
-          success: true,
-          code: 'SUCCESS',
-          message: 'METAR data retrieved successfully',
-          data: data.data
-        });
+    const checkwxUrl = `https://api.checkwx.com/v1/metar/${icao}/decoded`;
+    
+    const data = await makeApiRequest(checkwxUrl, {
+      headers: {
+        'X-API-Key': API_KEYS.checkwx
       }
-    } catch (apiError) {
-      console.warn('External API failed, using fallback:', apiError.message);
+    });
+
+    if (data && data.data && data.data.length > 0) {
+      return res.json({
+        success: true,
+        code: 'SUCCESS',
+        message: 'METAR data retrieved successfully',
+        data: data.data[0] // CheckWX returns an array
+      });
     }
-
-    // Fallback to mock data for development
-    const mockData = {
-      station: { ident: icao },
-      raw_text: `${icao} 041800Z 27015G25KT 10SM FEW025 22/15 A2992 RMK AO2 SLP132`,
-      observed: new Date().toISOString(),
-      wind: { direction_degrees: 270, speed_kts: 15, gust_kts: 25 },
-      visibility: { miles: '10', meters: '16093' },
-      clouds: [{ code: 'FEW', base_feet_agl: 2500 }],
-      temperature: { celsius: 22, fahrenheit: 72 },
-      dewpoint: { celsius: 15, fahrenheit: 59 },
-      altimeter: { hg: 29.92, hpa: 1013 }
-    };
-
-    res.json({
-      success: true,
-      code: 'MOCK',
-      message: 'METAR data retrieved (development mode)',
-      data: mockData
+    
+    // If API returns success but no data (e.g., invalid ICAO)
+    res.status(404).json({
+      success: false,
+      message: `No METAR data found for ${icao}`,
+      code: 'NOT_FOUND'
     });
 
   } catch (error) {
     console.error('METAR fetch error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch METAR data',
+      message: 'Failed to fetch METAR data from external API',
       error: error.message
     });
   }
 });
 
-// Fetch TAF data
+// Fetch TAF data (Real API only)
 app.get('/api/weather/taf', authenticateUser, async (req, res) => {
   try {
     const { icao } = req.query;
@@ -188,64 +170,41 @@ app.get('/api/weather/taf', authenticateUser, async (req, res) => {
       });
     }
 
-    // Try external API first
-    try {
-      const checkwxUrl = `https://api.checkwx.com/v1/taf/${icao}/decoded`;
-      
-      const data = await makeApiRequest(checkwxUrl, {
-        headers: {
-          'X-API-Key': API_KEYS.checkwx
-        }
-      });
-
-      if (data && data.data) {
-        return res.json({
-          success: true,
-          code: 'SUCCESS',
-          message: 'TAF data retrieved successfully',
-          data: data.data
-        });
+    const checkwxUrl = `https://api.checkwx.com/v1/taf/${icao}/decoded`;
+    
+    const data = await makeApiRequest(checkwxUrl, {
+      headers: {
+        'X-API-Key': API_KEYS.checkwx
       }
-    } catch (apiError) {
-      console.warn('External API failed, using fallback:', apiError.message);
+    });
+
+    if (data && data.data && data.data.length > 0) {
+      return res.json({
+        success: true,
+        code: 'SUCCESS',
+        message: 'TAF data retrieved successfully',
+        data: data.data[0] // CheckWX returns an array
+      });
     }
-
-    // Fallback to mock data for development
-    const mockData = {
-      station: { ident: icao },
-      raw_text: `TAF ${icao} 041730Z 0418/0524 26015G24KT P6SM FEW040`,
-      issue_time: new Date().toISOString(),
-      valid_time_from: new Date().toISOString(),
-      valid_time_to: new Date(Date.now() + 86400000).toISOString(),
-      forecast: [{
-        timestamp: {
-          from: new Date().toISOString(),
-          to: new Date(Date.now() + 21600000).toISOString()
-        },
-        wind: { direction_degrees: 260, speed_kts: 15, gust_kts: 24 },
-        visibility: { miles: 'P6', meters: '>9999' },
-        clouds: [{ code: 'FEW', base_feet_agl: 4000 }]
-      }]
-    };
-
-    res.json({
-      success: true,
-      code: 'MOCK',
-      message: 'TAF data retrieved (development mode)',
-      data: mockData
+    
+    // If API returns success but no data
+    res.status(404).json({
+      success: false,
+      message: `No TAF data found for ${icao}`,
+      code: 'NOT_FOUND'
     });
 
   } catch (error) {
     console.error('TAF fetch error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch TAF data',
+      message: 'Failed to fetch TAF data from external API',
       error: error.message
     });
   }
 });
 
-// Fetch NOTAMs
+// Fetch NOTAMs (Minimal Mock until real API is implemented)
 app.get('/api/notams', authenticateUser, async (req, res) => {
   try {
     const { icao } = req.query;
@@ -257,7 +216,7 @@ app.get('/api/notams', authenticateUser, async (req, res) => {
       });
     }
 
-    // Mock NOTAMs data for development
+    // TEMPORARY MOCK: Replace with real ICAO/AVWX API call when implemented
     const mockData = [{
       id: `A1234/25`,
       number: `A1234/25`,
@@ -265,14 +224,14 @@ app.get('/api/notams', authenticateUser, async (req, res) => {
       location: icao,
       start_time: new Date().toISOString(),
       end_time: new Date(Date.now() + 86400000).toISOString(),
-      text: `RWY 04L/22R CLSD DUE WIP. MAINT VEHICLES ON TWY A.`,
+      text: `RWY 04L/22R CLSD DUE WIP. MAINT VEHICLES ON TWY A. (MOCK)`,
       source: 'AVWX'
     }];
 
     res.json({
       success: true,
-      code: 'MOCK',
-      message: 'NOTAMs retrieved (development mode)',
+      code: 'MOCK_PLACEHOLDER',
+      message: 'NOTAMs retrieved (MOCK PLACEHOLDER)',
       data: mockData
     });
 
@@ -286,12 +245,12 @@ app.get('/api/notams', authenticateUser, async (req, res) => {
   }
 });
 
-// Fetch PIREPs
+// Fetch PIREPs (Minimal Mock until database logic is implemented)
 app.get('/api/pireps', authenticateUser, async (req, res) => {
   try {
     const { icao } = req.query;
     
-    // Mock PIREPs data for development
+    // TEMPORARY MOCK: Replace with real Supabase query when implemented
     const mockData = [{
       id: 1,
       icao_code: icao || 'KJFK',
@@ -308,8 +267,8 @@ app.get('/api/pireps', authenticateUser, async (req, res) => {
 
     res.json({
       success: true,
-      code: 'MOCK',
-      message: 'PIREP data retrieved (development mode)',
+      code: 'MOCK_PLACEHOLDER',
+      message: 'PIREP data retrieved (MOCK PLACEHOLDER)',
       data: mockData
     });
 
@@ -323,7 +282,7 @@ app.get('/api/pireps', authenticateUser, async (req, res) => {
   }
 });
 
-// Submit PIREP
+// Submit PIREP (Minimal Mock until database logic is implemented)
 app.post('/api/pireps', authenticateUser, async (req, res) => {
   try {
     const pirepData = {
@@ -339,7 +298,7 @@ app.post('/api/pireps', authenticateUser, async (req, res) => {
       submitted_by: req.user.id
     };
 
-    // Mock successful submission
+    // TEMPORARY MOCK: Replace with real Supabase insert when implemented
     const newPirep = {
       ...pirepData,
       id: Math.floor(Math.random() * 10000),
@@ -348,8 +307,8 @@ app.post('/api/pireps', authenticateUser, async (req, res) => {
 
     res.json({
       success: true,
-      code: 'MOCK',
-      message: 'PIREP submitted successfully (development mode)',
+      code: 'MOCK_PLACEHOLDER',
+      message: 'PIREP submitted successfully (MOCK PLACEHOLDER)',
       data: newPirep
     });
 
@@ -363,7 +322,7 @@ app.post('/api/pireps', authenticateUser, async (req, res) => {
   }
 });
 
-// Fetch Airport Details
+// Fetch Airport Details (Supabase only)
 app.get('/api/airports', authenticateUser, async (req, res) => {
   try {
     const { icao } = req.query;
@@ -375,7 +334,7 @@ app.get('/api/airports', authenticateUser, async (req, res) => {
       });
     }
 
-    // 1. Query Supabase for airport details
+    // Query Supabase for airport details
     const { data: airportData, error } = await supabase
       .from('airports')
       .select('*')
@@ -384,7 +343,7 @@ app.get('/api/airports', authenticateUser, async (req, res) => {
 
     if (error && error.code !== 'PGRST116') { // PGRST116 means no rows found
       console.error('Supabase airport fetch error:', error);
-      // Fall through to mock data if Supabase fails unexpectedly
+      return res.status(500).json({ success: false, message: 'Database error fetching airport details', error: error.message });
     }
 
     if (airportData) {
@@ -396,26 +355,11 @@ app.get('/api/airports', authenticateUser, async (req, res) => {
       });
     }
 
-    // 2. Fallback to mock data for development if not found in DB
-    const mockData = {
-      icao: icao,
-      name: `${icao} Airport (Mock)`,
-      elevation: 1000,
-      latitude: 40.0,
-      longitude: -74.0,
-      runways: [{
-        ident: '04/22',
-        length_ft: 8000,
-        width_ft: 150,
-        surface: 'Asphalt'
-      }]
-    };
-
-    res.json({
-      success: true,
-      code: 'MOCK',
-      message: 'Airport details retrieved (development mode fallback)',
-      data: mockData
+    // If not found in Supabase
+    res.status(404).json({
+      success: false,
+      code: 'NOT_FOUND',
+      message: `Airport details not found for ${icao} in database.`
     });
 
   } catch (error) {
@@ -428,7 +372,7 @@ app.get('/api/airports', authenticateUser, async (req, res) => {
   }
 });
 
-// Admin route to load airport data (NEW)
+// Admin route to load airport data
 app.post('/api/admin/load-airports', authenticateUser, async (req, res) => {
   if (req.user.role !== 'admin') {
     return res.status(403).json({ success: false, message: 'Forbidden: Admin access required' });
@@ -479,7 +423,7 @@ app.post('/api/admin/load-airports', authenticateUser, async (req, res) => {
 });
 
 
-// Save Flight Plan
+// Save Flight Plan (Minimal Mock until database logic is implemented)
 app.post('/api/flight-plans', authenticateUser, async (req, res) => {
   try {
     const flightPlanData = {
@@ -493,7 +437,7 @@ app.post('/api/flight-plans', authenticateUser, async (req, res) => {
       aircraft_identification: req.body.aircraft_identification
     };
 
-    // Mock successful save
+    // TEMPORARY MOCK: Replace with real Supabase insert when implemented
     const newFlightPlan = {
       ...flightPlanData,
       id: Math.floor(Math.random() * 10000),
@@ -502,8 +446,8 @@ app.post('/api/flight-plans', authenticateUser, async (req, res) => {
 
     res.json({
       success: true,
-      code: 'MOCK',
-      message: 'Flight plan saved successfully (development mode)',
+      code: 'MOCK_PLACEHOLDER',
+      message: 'Flight plan saved successfully (MOCK PLACEHOLDER)',
       data: newFlightPlan
     });
 
@@ -517,10 +461,10 @@ app.post('/api/flight-plans', authenticateUser, async (req, res) => {
   }
 });
 
-// Get User's Flight Plans
+// Get User's Flight Plans (Minimal Mock until database logic is implemented)
 app.get('/api/flight-plans', authenticateUser, async (req, res) => {
   try {
-    // Mock flight plans data
+    // TEMPORARY MOCK: Replace with real Supabase query when implemented
     const mockData = [{
       id: 1,
       user_id: req.user.id,
@@ -534,8 +478,8 @@ app.get('/api/flight-plans', authenticateUser, async (req, res) => {
 
     res.json({
       success: true,
-      code: 'MOCK',
-      message: 'Flight plans retrieved (development mode)',
+      code: 'MOCK_PLACEHOLDER',
+      message: 'Flight plans retrieved (MOCK PLACEHOLDER)',
       data: mockData
     });
 
@@ -565,8 +509,8 @@ app.listen(PORT, () => {
   console.log(`🏥 Health check: http://localhost:${PORT}/api/health`);
   console.log(`🗄️  Supabase connected: ${supabaseUrl}`);
   console.log(`🔐 Authentication: JWT with Supabase Auth`);
-  console.log(`📊 Version: 2.0.0 with Supabase Integration`);
-  console.log(`⚠️  Running in DEVELOPMENT MODE with mock data fallbacks`);
+  console.log(`✅ Core Weather Endpoints now use REAL API data.`);
+  console.log(`⚠️  NOTAMs, PIREPs, and Flight Plans still use MOCK PLACEHOLDERS.`);
 });
 
 export default app;
