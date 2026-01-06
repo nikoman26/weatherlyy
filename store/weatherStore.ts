@@ -52,6 +52,7 @@ interface WeatherStore {
   updatePreferences: (prefs: Partial<UserPreferences>) => void;
   updateUserProfile: (profile: Partial<User>) => Promise<void>;
   fetchAirportDetails: (icao: string) => Promise<void>;
+  fetchAirportsInBounds: (bounds: { south: number, west: number, north: number, east: number }) => Promise<void>;
   generateFlightPlan: (dep: string, dest: string) => Promise<void>;
   
   // Admin Actions
@@ -299,6 +300,24 @@ export const useWeatherStore = create<WeatherStore>((set, get) => ({
         console.error('Airport details fetch failed:', error);
         // Note: Backend now handles mock fallback if Supabase fails.
       }
+  },
+  
+  fetchAirportsInBounds: async (bounds: { south: number, west: number, north: number, east: number }) => {
+      // This is a simulation. In a real app, the backend would query Supabase 
+      // using the bounds (e.g., PostGIS ST_Within).
+      
+      // For now, we simulate by filtering mock data based on bounds.
+      const allMockAirports = Object.values(MOCK_AIRPORT_DETAILS);
+      
+      const airportsInBounds = allMockAirports.filter(airport => 
+          airport.latitude >= bounds.south &&
+          airport.latitude <= bounds.north &&
+          airport.longitude >= bounds.west &&
+          airport.longitude <= bounds.east
+      ).map(a => a.icao);
+
+      // Simulate fetching details for these airports
+      await Promise.all(airportsInBounds.map(icao => get().fetchAirportDetails(icao)));
   },
 
   generateFlightPlan: async (dep: string, dest: string) => {

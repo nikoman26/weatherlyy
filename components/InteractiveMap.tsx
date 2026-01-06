@@ -15,16 +15,43 @@ interface InteractiveMapProps {
     enablePirepMarkers?: boolean;
 }
 
+// Simple debounce utility
+const debounce = (func: Function, delay: number) => {
+    let timeoutId: number;
+    return function(...args: any[]) {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => func.apply(this, args), delay);
+    };
+};
+
 const InteractiveMap: React.FC<InteractiveMapProps> = ({ className, onClick, enablePirepMarkers }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const layerGroupRef = useRef<any>(null); // To hold dynamic markers/polylines
 
-  const { activeFlightPlan, airportDetails, user, pireps } = useWeatherStore();
+  const { activeFlightPlan, airportDetails, user, pireps, fetchAirportsInBounds } = useWeatherStore();
 
   // Configuration for API Keys
   const OPENWEATHER_API_KEY = 'YOUR_OWM_API_KEY'; 
   const OPENAIP_API_KEY = 'YOUR_OPENAIP_API_KEY'; 
+
+  // Debounced function to fetch airports when map moves
+  const debouncedFetchAirports = useRef(debounce((map: any) => {
+      if (!map) return;
+      const bounds = map.getBounds();
+      const zoom = map.getZoom();
+      
+      // Only fetch airports if zoomed in enough (e.g., zoom level 6 or higher)
+      if (zoom >= 6) {
+          fetchAirportsInBounds({
+              south: bounds.getSouth(),
+              west: bounds.getWest(),
+              north: bounds.getNorth(),
+              east: bounds.getEast()
+          });
+      }
+  }, 500)).current;
+
 
   // Initialize Map Base
   useEffect(() => {
@@ -44,8 +71,16 @@ const InteractiveMap: React.FC<InteractiveMapProps> = ({ className, onClick, ena
         });
         map.getContainer().style.cursor = 'crosshair';
     }
+    
+    // 2. Add event listener for map movement to trigger dynamic loading
+    const handleMoveEnd = () => debouncedFetchAirports(map);
+    map.on('moveend', handleMoveEnd);
 
-    // 2. Base Layers
+    // Initial load of airports in the starting view
+    handleMoveEnd();
+
+
+    // 3. Base Layers
     const cartoDark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; CARTO',
       subdomains: 'abcd',
@@ -58,7 +93,7 @@ const InteractiveMap: React.FC<InteractiveMapProps> = ({ className, onClick, ena
 
     cartoDark.addTo(map);
 
-    // 3. Weather Layers
+    // 4. Weather Layers
     const cloudsLayer = L.tileLayer(`https://tile.openweathermap.org/map/clouds_new/{z}/{x}/{y}.png?appid=${OPENWEATHER_API_KEY}`, {
       maxZoom: 18,
       attribution: 'OWM'
@@ -69,14 +104,14 @@ const InteractiveMap: React.FC<InteractiveMapProps> = ({ className, onClick, ena
         attribution: 'OWM'
     });
 
-    // 4. Aviation Layers (OpenAIP)
+    // 5. Aviation Layers (OpenAIP)
     const openAipAirspace = L.tileLayer(`https://api.tiles.openaip.net/api/data/airspaces/{z}/{x}/{y}.png?apiKey=${OPENAIP_API_KEY}`, {
       maxZoom: 14,
       minZoom: 4,
       attribution: 'OpenAIP'
     });
 
-    // 5. Layer Controls
+    // 6. Layer Controls
     const baseMaps = {
       "Dark Mode": cartoDark,
       "Standard": openStreetMap
@@ -112,6 +147,7 @@ const InteractiveMap: React.FC<InteractiveMapProps> = ({ className, onClick, ena
     info.addTo(map);
 
     return () => {
+      map.off('moveend', handleMoveEnd);
       map.remove();
       mapInstanceRef.current = null;
     };
@@ -196,21 +232,19 @@ const InteractiveMap: React.FC<InteractiveMapProps> = ({ className, onClick, ena
               map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
           }
       } else if (!enablePirepMarkers) {
-          // 3. Plot Favorites if no flight plan and not in Pirep mode (default dashboard view)
-          user?.favoriteAirports.forEach(icao => {
-             addAirportMarker(icao);
-          });
-      }
-
-      // 4. Plot any other loaded airports in details that aren't Favorites (e.g. searched)
-      if (!enablePirepMarkers) {
+          // 3. Plot all currently loaded airport details (from favorites, search, or bounds fetch)
           Object.keys(airportDetails).forEach(icao => {
               const isFav = user?.favoriteAirports.includes(icao);
               const isRoute = activeFlightPlan && (activeFlightPlan.departure.icao === icao || activeFlightPlan.destination.icao === icao);
               
-              if (!isFav && !isRoute) {
-                  addAirportMarker(icao, '#8b5cf6'); // Purple for others
+              let color = '#8b5cf6'; // Purple for dynamically loaded
+              if (isFav) color = '#0ea5e9'; // Blue for favorites
+              if (isRoute) {
+                  if (activeFlightPlan.departure.icao === icao) color = '#22c55e'; // Green for departure
+                  if (activeFlightPlan.destination.icao === icao) color = '#ef4444'; // Red for destination
               }
+              
+              addAirportMarker(icao, color);
           });
       }
 
