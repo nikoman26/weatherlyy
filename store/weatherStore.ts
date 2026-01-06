@@ -296,16 +296,7 @@ export const useWeatherStore = create<WeatherStore>((set, get) => ({
         }
       } catch (error) {
         console.error('Airport details fetch failed:', error);
-        // Fallback to mock data
-        const details = MOCK_AIRPORT_DETAILS[icao];
-        if (details) {
-          set(state => ({
-            airportDetails: {
-              ...state.airportDetails,
-              [icao]: details
-            }
-          }));
-        }
+        // Note: Backend now handles mock fallback if Supabase fails.
       }
   },
 
@@ -329,48 +320,28 @@ export const useWeatherStore = create<WeatherStore>((set, get) => ({
       const destTaf = destWeatherResult.status === 'fulfilled' ? await weatherAPI.getTAF(dest).catch(() => MOCK_TAFS[dest] || null) : MOCK_TAFS[dest] || null;
       const destNotams = destNotamsResult.status === 'fulfilled' ? destNotamsResult.value : MOCK_NOTAMS[dest] || [];
 
-      // Fetch airport details
-      const [depDetails, destDetails] = await Promise.allSettled([
+      // Fetch airport details (relying on backend for Supabase/Mock fallback)
+      const [depDetailsResult, destDetailsResult] = await Promise.allSettled([
         weatherAPI.getAirportDetails(dep),
         weatherAPI.getAirportDetails(dest)
       ]);
 
-      if (depDetails.status === 'fulfilled' && depDetails.value) {
+      if (depDetailsResult.status === 'fulfilled' && depDetailsResult.value) {
         set(state => ({
           airportDetails: {
             ...state.airportDetails,
-            [dep]: depDetails.value!
+            [dep]: depDetailsResult.value!
           }
         }));
-      } else {
-        const mockDepDetails = MOCK_AIRPORT_DETAILS[dep];
-        if (mockDepDetails) {
-          set(state => ({
-            airportDetails: {
-              ...state.airportDetails,
-              [dep]: mockDepDetails
-            }
-          }));
-        }
       }
 
-      if (destDetails.status === 'fulfilled' && destDetails.value) {
+      if (destDetailsResult.status === 'fulfilled' && destDetailsResult.value) {
         set(state => ({
           airportDetails: {
             ...state.airportDetails,
-            [dest]: destDetails.value!
+            [dest]: destDetailsResult.value!
           }
         }));
-      } else {
-        const mockDestDetails = MOCK_AIRPORT_DETAILS[dest];
-        if (mockDestDetails) {
-          set(state => ({
-            airportDetails: {
-              ...state.airportDetails,
-              [dest]: mockDestDetails
-            }
-          }));
-        }
       }
 
       const flightPlan: FlightPlanData = {
@@ -382,7 +353,7 @@ export const useWeatherStore = create<WeatherStore>((set, get) => ({
 
     } catch (error) {
       console.error('Flight plan generation failed:', error);
-      // Fallback to mock data
+      // Fallback to mock data for weather/notams if API calls failed entirely
       const depMetar = MOCK_METARS[dep] || null;
       const depTaf = MOCK_TAFS[dep] || null;
       const depNotams = MOCK_NOTAMS[dep] || [];
@@ -390,6 +361,7 @@ export const useWeatherStore = create<WeatherStore>((set, get) => ({
       const destTaf = MOCK_TAFS[dest] || null;
       const destNotams = MOCK_NOTAMS[dest] || [];
 
+      // Ensure mock airport details are loaded if API failed
       const depDetails = MOCK_AIRPORT_DETAILS[dep];
       const destDetails = MOCK_AIRPORT_DETAILS[dest];
 

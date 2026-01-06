@@ -369,10 +369,31 @@ app.get('/api/airports', authenticateUser, async (req, res) => {
       });
     }
 
-    // Mock airport data for development
+    // 1. Query Supabase for airport details
+    const { data: airportData, error } = await supabase
+      .from('airports')
+      .select('*')
+      .eq('icao', icao.toUpperCase())
+      .single();
+
+    if (error && error.code !== 'PGRST116') { // PGRST116 means no rows found
+      console.error('Supabase airport fetch error:', error);
+      // Fall through to mock data if Supabase fails unexpectedly
+    }
+
+    if (airportData) {
+      return res.json({
+        success: true,
+        code: 'SUPABASE',
+        message: 'Airport details retrieved from Supabase',
+        data: airportData
+      });
+    }
+
+    // 2. Fallback to mock data for development if not found in DB
     const mockData = {
       icao: icao,
-      name: `${icao} Airport`,
+      name: `${icao} Airport (Mock)`,
       elevation: 1000,
       latitude: 40.0,
       longitude: -74.0,
@@ -387,7 +408,7 @@ app.get('/api/airports', authenticateUser, async (req, res) => {
     res.json({
       success: true,
       code: 'MOCK',
-      message: 'Airport details retrieved (development mode)',
+      message: 'Airport details retrieved (development mode fallback)',
       data: mockData
     });
 
