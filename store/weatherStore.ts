@@ -1,30 +1,11 @@
 import { create } from 'zustand';
 import { User, MetarData, TafData, Notam, Pirep, AirportDetails, UserPreferences } from '../types.ts';
-import { MOCK_METARS, MOCK_TAFS, MOCK_NOTAMS, MOCK_PIREPS, MOCK_AIRPORT_DETAILS } from '../services/mockData.ts';
+import { MOCK_METARS, MOCK_TAFS, MOCK_NOTAMS, MOCK_PIREPS } from '../services/mockData.ts';
 import { weatherAPI } from '../services/weatherApi.ts';
 
 interface FlightPlanData {
-  departure: {
-    icao: string;
-    metar: MetarData | null;
-    taf: TafData | null;
-    notams: Notam[];
-  };
-  destination: {
-    icao: string;
-    metar: MetarData | null;
-    taf: TafData | null;
-    notams: Notam[];
-  };
-}
-
-interface ApiKeys {
-  checkwx: string;
-  icao: string;
-  openweather: string;
-  windy: string;
-  avwx: string;
-  openaip: string;
+  departure: { icao: string; metar: MetarData | null; taf: TafData | null; notams: Notam[]; };
+  destination: { icao: string; metar: MetarData | null; taf: TafData | null; notams: Notam[]; };
 }
 
 interface WeatherStore {
@@ -39,9 +20,8 @@ interface WeatherStore {
   activeFlightPlan: FlightPlanData | null;
   isLoading: boolean;
   error: string | null;
-  apiKeys: ApiKeys;
+  apiKeys: Record<string, string>;
 
-  // Actions
   login: (email: string) => Promise<void>;
   logout: () => void;
   setActiveAirport: (icao: string) => void;
@@ -52,47 +32,18 @@ interface WeatherStore {
   updatePreferences: (prefs: Partial<UserPreferences>) => void;
   updateUserProfile: (profile: Partial<User>) => Promise<void>;
   fetchAirportDetails: (icao: string) => Promise<void>;
-  fetchAllAirports: () => Promise<void>; // NEW
-  fetchAirportsInBounds: (bounds: { south: number, west: number, north: number, east: number }) => Promise<void>;
+  fetchAllAirports: () => Promise<void>;
+  fetchAirportsInBounds: (bounds: any) => Promise<void>;
   generateFlightPlan: (dep: string, dest: string) => Promise<void>;
-  
-  // Admin Actions
   updateUserRole: (userId: number, role: string) => void;
   deleteUser: (userId: number) => void;
-  updateApiKeys: (keys: Partial<ApiKeys>) => Promise<void>;
+  updateApiKeys: (keys: any) => Promise<void>;
   loadAirportData: () => Promise<void>;
 }
 
-const INITIAL_USERS: User[] = [
-  {
-    id: 1,
-    username: 'CaptainDave',
-    email: 'dave@weatherly.co.ke',
-    role: 'user',
-    favoriteAirports: ['KJFK'],
-    preferences: { temperatureUnit: 'celsius', windUnit: 'kts', darkMode: true, emailAlerts: true, smsAlerts: false }
-  },
-  {
-    id: 2,
-    username: 'StudentPilot_Sarah',
-    email: 'sarah@weatherly.co.ke',
-    role: 'user',
-    favoriteAirports: ['KLAX'],
-    preferences: { temperatureUnit: 'fahrenheit', windUnit: 'kts', darkMode: true, emailAlerts: false, smsAlerts: true }
-  },
-  {
-    id: 3,
-    username: 'OpsAdmin',
-    email: 'admin@weatherly.co.ke',
-    role: 'admin',
-    favoriteAirports: ['EGLL'],
-    preferences: { temperatureUnit: 'celsius', windUnit: 'kts', darkMode: true, emailAlerts: true, smsAlerts: true }
-  }
-];
-
 export const useWeatherStore = create<WeatherStore>((set, get) => ({
   user: null,
-  allUsers: INITIAL_USERS,
+  allUsers: [],
   isAuthenticated: false,
   activeAirport: null,
   weatherData: {},
@@ -102,14 +53,7 @@ export const useWeatherStore = create<WeatherStore>((set, get) => ({
   activeFlightPlan: null,
   isLoading: false,
   error: null,
-  apiKeys: {
-    checkwx: '59c854f751b34b28a45f45bcc72b7e8b',
-    icao: 'afce681b-5649-4135-918b-e5209508ebc5',
-    openweather: '36057d8a851020194fee5caaa108c0c0',
-    windy: 'mea0DswcSSnycBQkXTGU26QrUPUv0zQS',
-    avwx: 'D7dEFR6DWQ5Al5jDsoPSvzsN9_cYZzG7lDE1pIgtSzw',
-    openaip: '58ecb709bc7ce1fdf7123ae2db0a6bca',
-  },
+  apiKeys: {},
 
   login: async (email: string) => {
     set({ isLoading: true });
@@ -123,37 +67,23 @@ export const useWeatherStore = create<WeatherStore>((set, get) => ({
           email,
           role: isAdmin ? 'admin' : 'user',
           favoriteAirports: ['KJFK', 'EGLL', 'KSFO'],
-          preferences: { temperatureUnit: 'celsius', windUnit: 'kts', darkMode: true, emailAlerts: true, smsAlerts: false },
-          licenseNumber: isAdmin ? 'ADMIN-001' : 'ATP-12345',
-          totalFlightHours: 1500,
-          pilotCertification: 'ATP Multi-Engine Land'
+          preferences: { temperatureUnit: 'celsius', windUnit: 'kts', darkMode: true, emailAlerts: true, smsAlerts: false }
         },
         isLoading: false
       });
-    }, 800);
+    }, 500);
   },
 
   logout: () => set({ isAuthenticated: false, user: null }),
   setActiveAirport: (icao) => set({ activeAirport: icao }),
 
   fetchWeather: async (icao) => {
-    set({ isLoading: true, error: null });
+    set({ isLoading: true });
     try {
-      const [metarResult, tafResult] = await Promise.allSettled([
-        weatherAPI.getMETAR(icao),
-        weatherAPI.getTAF(icao)
-      ]);
-      const metarData = metarResult.status === 'fulfilled' ? metarResult.value : MOCK_METARS[icao] || null;
-      const tafData = tafResult.status === 'fulfilled' ? tafResult.value : MOCK_TAFS[icao] || null;
-      set(state => ({
-        weatherData: { ...state.weatherData, [icao]: { metar: metarData, taf: tafData } },
-        isLoading: false
-      }));
+      const [metar, taf] = await Promise.all([weatherAPI.getMETAR(icao), weatherAPI.getTAF(icao)]);
+      set(state => ({ weatherData: { ...state.weatherData, [icao]: { metar, taf } }, isLoading: false }));
     } catch (error) {
-      set(state => ({
-        weatherData: { ...state.weatherData, [icao]: { metar: MOCK_METARS[icao] || null, taf: MOCK_TAFS[icao] || null } },
-        isLoading: false
-      }));
+      set(state => ({ weatherData: { ...state.weatherData, [icao]: { metar: MOCK_METARS[icao] || null, taf: MOCK_TAFS[icao] || null } }, isLoading: false }));
     }
   },
 
@@ -189,7 +119,6 @@ export const useWeatherStore = create<WeatherStore>((set, get) => ({
   updatePreferences: (prefs) => set(state => state.user ? ({ user: { ...state.user, preferences: { ...state.user.preferences, ...prefs } } }) : state),
   updateUserProfile: async (profile) => {
     set({ isLoading: true });
-    await new Promise(r => setTimeout(r, 800));
     set(state => state.user ? ({ user: { ...state.user, ...profile }, isLoading: false }) : { isLoading: false });
   },
 
@@ -210,7 +139,7 @@ export const useWeatherStore = create<WeatherStore>((set, get) => ({
       }, {} as Record<string, AirportDetails>);
       set(state => ({ airportDetails: { ...state.airportDetails, ...airportMap }, isLoading: false }));
     } catch (error) {
-      set({ isLoading: false, error: 'Failed to load all airport data.' });
+      set({ isLoading: false, error: 'Failed to load airport data.' });
     }
   },
 
@@ -219,22 +148,10 @@ export const useWeatherStore = create<WeatherStore>((set, get) => ({
   },
 
   generateFlightPlan: async (dep, dest) => {
-    set({ isLoading: true, error: null, activeFlightPlan: null });
+    set({ isLoading: true, activeFlightPlan: null });
     try {
-      const [dm, ds, dn, dsn] = await Promise.allSettled([
-        weatherAPI.getMETAR(dep), weatherAPI.getMETAR(dest),
-        weatherAPI.getNOTAMs(dep), weatherAPI.getNOTAMs(dest)
-      ]);
-      const depMetar = dm.status === 'fulfilled' ? dm.value : MOCK_METARS[dep] || null;
-      const destMetar = ds.status === 'fulfilled' ? ds.value : MOCK_METARS[dest] || null;
-      const depNotams = dn.status === 'fulfilled' ? dn.value : MOCK_NOTAMS[dep] || [];
-      const destNotams = dsn.status === 'fulfilled' ? dsn.value : MOCK_NOTAMS[dest] || [];
-      
-      const flightPlan = {
-        departure: { icao: dep, metar: depMetar, taf: null, notams: depNotams },
-        destination: { icao: dest, metar: destMetar, taf: null, notams: destNotams }
-      };
-      set({ activeFlightPlan: flightPlan, isLoading: false });
+      const [dm, ds, dn, dsn] = await Promise.all([weatherAPI.getMETAR(dep), weatherAPI.getMETAR(dest), weatherAPI.getNOTAMs(dep), weatherAPI.getNOTAMs(dest)]);
+      set({ activeFlightPlan: { departure: { icao: dep, metar: dm, taf: null, notams: dn }, destination: { icao: dest, metar: ds, taf: null, notams: dsn } }, isLoading: false });
     } catch (error) {
       set({ isLoading: false });
     }
@@ -244,7 +161,6 @@ export const useWeatherStore = create<WeatherStore>((set, get) => ({
   deleteUser: (userId) => set(state => ({ allUsers: state.allUsers.filter(u => u.id !== userId) })),
   updateApiKeys: async (keys) => {
     set({ isLoading: true });
-    await new Promise(r => setTimeout(r, 1000));
     set(state => ({ apiKeys: { ...state.apiKeys, ...keys }, isLoading: false }));
   },
   loadAirportData: async () => {
