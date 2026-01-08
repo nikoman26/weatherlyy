@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { User, MetarData, TafData, Notam, Pirep, AirportDetails, UserPreferences } from '../types.ts';
+import { MetarData, TafData, Notam, Pirep, AirportDetails } from '../types.ts';
 import { MOCK_METARS, MOCK_TAFS, MOCK_NOTAMS, MOCK_PIREPS } from '../services/mockData.ts';
 import { weatherAPI } from '../services/weatherApi.ts';
 import { supabase } from '../src/integrations/supabase/client';
@@ -20,6 +20,7 @@ interface WeatherStore {
   isLoading: boolean;
   error: string | null;
 
+  initialize: () => Promise<void>;
   logout: () => Promise<void>;
   setActiveAirport: (icao: string) => void;
   fetchWeather: (icao: string) => Promise<void>;
@@ -42,8 +43,22 @@ export const useWeatherStore = create<WeatherStore>((set, get) => ({
   isLoading: false,
   error: null,
 
+  initialize: async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+      
+      set({ user: { ...session.user, ...profile } });
+    }
+  },
+
   logout: async () => {
     await supabase.auth.signOut();
+    set({ user: null });
   },
 
   setActiveAirport: (icao) => set({ activeAirport: icao }),
@@ -101,7 +116,7 @@ export const useWeatherStore = create<WeatherStore>((set, get) => ({
       if (error) throw error;
       set(state => ({ airportDetails: { ...state.airportDetails, [icao]: data } }));
     } catch (error) {
-      // Fallback or handle error
+      // Fallback
     }
   },
 
