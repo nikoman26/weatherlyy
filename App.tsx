@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { MemoryRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useSession, SessionProvider } from './src/components/SessionProvider.tsx';
+import { useWeatherStore } from './store/weatherStore.ts';
 import Layout from './components/ui/Layout.tsx';
 import Login from './pages/Login.tsx';
 import Dashboard from './pages/Dashboard.tsx';
@@ -15,23 +16,49 @@ import Checklists from './pages/Checklists.tsx';
 import AdminDashboard from './pages/AdminDashboard.tsx';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { session, isLoading } = useSession();
+  const { session, isLoading: sessionLoading } = useSession();
+  const { initialize, user, isLoading: storeLoading } = useWeatherStore();
   
-  if (isLoading) return <div className="h-screen bg-slate-950 flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-500"></div></div>;
+  useEffect(() => {
+    if (session && !user) {
+      initialize();
+    }
+  }, [session, user, initialize]);
+
+  if (sessionLoading || (session && storeLoading && !user)) {
+    return (
+      <div className="h-screen bg-slate-950 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-500"></div>
+      </div>
+    );
+  }
+  
   if (!session) return <Navigate to="/login" />;
   
   return <Layout>{children}</Layout>;
 };
 
 const AdminRoute = ({ children }: { children: React.ReactNode }) => {
-  const { session, isLoading } = useSession();
+  const { session, isLoading: sessionLoading } = useSession();
+  const { initialize, user, isLoading: storeLoading } = useWeatherStore();
   
-  if (isLoading) return null;
+  useEffect(() => {
+    if (session && !user) {
+      initialize();
+    }
+  }, [session, user, initialize]);
+
+  if (sessionLoading || (session && storeLoading && !user)) {
+    return (
+      <div className="h-screen bg-slate-950 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-500"></div>
+      </div>
+    );
+  }
+
   if (!session) return <Navigate to="/login" />;
   
-  // Basic check for admin - in real app check metadata or a role field in profile
-  const isAdmin = session.user.email?.includes('admin');
-  if (!isAdmin) return <Navigate to="/" />;
+  if (user?.role !== 'admin') return <Navigate to="/" />;
   
   return <Layout>{children}</Layout>;
 };
