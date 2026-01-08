@@ -1,6 +1,6 @@
 import React from 'react';
 import { MemoryRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { useWeatherStore } from './store/weatherStore.ts';
+import { useSession, SessionProvider } from './src/components/SessionProvider.tsx';
 import Layout from './components/ui/Layout.tsx';
 import Login from './pages/Login.tsx';
 import Dashboard from './pages/Dashboard.tsx';
@@ -14,50 +14,50 @@ import Tools from './pages/Tools.tsx';
 import Checklists from './pages/Checklists.tsx';
 import AdminDashboard from './pages/AdminDashboard.tsx';
 
-// FIX: Moved ProtectedRoute and AdminRoute outside of the App component.
-// Defining components inside another component is an anti-pattern in React. It causes the component to be
-// re-created on every render, which can lead to state loss, performance issues, and confusing type errors like the one encountered.
-// By moving them to the top level, they become stable components, which resolves the TypeScript errors.
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { isAuthenticated } = useWeatherStore();
-  if (!isAuthenticated) return <Navigate to="/login" />;
+  const { session, isLoading } = useSession();
+  
+  if (isLoading) return <div className="h-screen bg-slate-950 flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-500"></div></div>;
+  if (!session) return <Navigate to="/login" />;
+  
   return <Layout>{children}</Layout>;
 };
 
 const AdminRoute = ({ children }: { children: React.ReactNode }) => {
-  const { isAuthenticated, user } = useWeatherStore();
-  if (!isAuthenticated) return <Navigate to="/login" />;
-  if (user?.role !== 'admin') return <Navigate to="/" />;
+  const { session, isLoading } = useSession();
+  
+  if (isLoading) return null;
+  if (!session) return <Navigate to="/login" />;
+  
+  // Basic check for admin - in real app check metadata or a role field in profile
+  const isAdmin = session.user.email?.includes('admin');
+  if (!isAdmin) return <Navigate to="/" />;
+  
   return <Layout>{children}</Layout>;
 };
 
 const App: React.FC = () => {
-  const { isAuthenticated } = useWeatherStore();
-
   return (
-    <MemoryRouter>
-      <Routes>
-        <Route path="/login" element={!isAuthenticated ? <Login /> : <Navigate to="/" />} />
-        
-        {/* Protected Routes */}
-        {/* FIX: Explicitly passing the 'children' prop to work around a TypeScript inference issue where the children were not being recognized when nested inside the 'element' prop. */}
-        <Route path="/" element={<ProtectedRoute children={<Dashboard />} />} />
-        <Route path="/map" element={<ProtectedRoute children={<MapViewer />} />} />
-        <Route path="/plan" element={<ProtectedRoute children={<FlightPlan />} />} />
-        <Route path="/weather" element={<ProtectedRoute children={<Weather />} />} />
-        <Route path="/notams" element={<ProtectedRoute children={<Notams />} />} />
-        <Route path="/pireps" element={<ProtectedRoute children={<Pireps />} />} />
-        <Route path="/settings" element={<ProtectedRoute children={<Settings />} />} />
-        <Route path="/tools" element={<ProtectedRoute children={<Tools />} />} />
-        <Route path="/checklists" element={<ProtectedRoute children={<Checklists />} />} />
-        
-        {/* Admin Route */}
-        {/* FIX: Explicitly passing the 'children' prop to work around a TypeScript inference issue. */}
-        <Route path="/admin" element={<AdminRoute children={<AdminDashboard />} />} />
+    <SessionProvider>
+      <MemoryRouter>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          
+          <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/map" element={<ProtectedRoute><MapViewer /></ProtectedRoute>} />
+          <Route path="/plan" element={<ProtectedRoute><FlightPlan /></ProtectedRoute>} />
+          <Route path="/weather" element={<ProtectedRoute><Weather /></ProtectedRoute>} />
+          <Route path="/notams" element={<ProtectedRoute><Notams /></ProtectedRoute>} />
+          <Route path="/pireps" element={<ProtectedRoute><Pireps /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+          <Route path="/tools" element={<ProtectedRoute><Tools /></ProtectedRoute>} />
+          <Route path="/checklists" element={<ProtectedRoute><Checklists /></ProtectedRoute>} />
+          <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
 
-        <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
-    </MemoryRouter>
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+      </MemoryRouter>
+    </SessionProvider>
   );
 };
 

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { User, MetarData, TafData, Notam, Pirep, AirportDetails, UserPreferences } from '../types.ts';
 import { MOCK_METARS, MOCK_TAFS, MOCK_NOTAMS, MOCK_PIREPS } from '../services/mockData.ts';
 import { weatherAPI } from '../services/weatherApi.ts';
+import { supabase } from '../src/integrations/supabase/client';
 
 interface FlightPlanData {
   departure: { icao: string; metar: MetarData | null; taf: TafData | null; notams: Notam[]; };
@@ -9,9 +10,7 @@ interface FlightPlanData {
 }
 
 interface WeatherStore {
-  user: User | null;
-  allUsers: User[];
-  isAuthenticated: boolean;
+  user: any | null;
   activeAirport: string | null;
   weatherData: Record<string, { metar: MetarData | null; taf: TafData | null }>;
   notams: Record<string, Notam[]>;
@@ -20,31 +19,20 @@ interface WeatherStore {
   activeFlightPlan: FlightPlanData | null;
   isLoading: boolean;
   error: string | null;
-  apiKeys: Record<string, string>;
 
-  login: (email: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   setActiveAirport: (icao: string) => void;
   fetchWeather: (icao: string) => Promise<void>;
   fetchNotams: (icao: string) => Promise<void>;
   fetchPireps: () => Promise<void>;
-  submitPirep: (pirep: Omit<Pirep, 'id' | 'submitted_at'>) => Promise<void>;
-  updatePreferences: (prefs: Partial<UserPreferences>) => void;
-  updateUserProfile: (profile: Partial<User>) => Promise<void>;
+  submitPirep: (pirep: any) => Promise<void>;
   fetchAirportDetails: (icao: string) => Promise<void>;
   fetchAllAirports: () => Promise<void>;
-  fetchAirportsInBounds: (bounds: any) => Promise<void>;
   generateFlightPlan: (dep: string, dest: string) => Promise<void>;
-  updateUserRole: (userId: number, role: string) => void;
-  deleteUser: (userId: number) => void;
-  updateApiKeys: (keys: any) => Promise<void>;
-  loadAirportData: () => Promise<void>;
 }
 
 export const useWeatherStore = create<WeatherStore>((set, get) => ({
   user: null,
-  allUsers: [],
-  isAuthenticated: false,
   activeAirport: null,
   weatherData: {},
   notams: {},
@@ -53,28 +41,11 @@ export const useWeatherStore = create<WeatherStore>((set, get) => ({
   activeFlightPlan: null,
   isLoading: false,
   error: null,
-  apiKeys: {},
 
-  login: async (email: string) => {
-    set({ isLoading: true });
-    setTimeout(() => {
-      const isAdmin = email.toLowerCase().includes('admin');
-      set({
-        isAuthenticated: true,
-        user: {
-          id: isAdmin ? 3 : 1,
-          username: email.split('@')[0],
-          email,
-          role: isAdmin ? 'admin' : 'user',
-          favoriteAirports: ['KJFK', 'EGLL', 'KSFO'],
-          preferences: { temperatureUnit: 'celsius', windUnit: 'kts', darkMode: true, emailAlerts: true, smsAlerts: false }
-        },
-        isLoading: false
-      });
-    }, 500);
+  logout: async () => {
+    await supabase.auth.signOut();
   },
 
-  logout: () => set({ isAuthenticated: false, user: null }),
   setActiveAirport: (icao) => set({ activeAirport: icao }),
 
   fetchWeather: async (icao) => {
@@ -98,8 +69,9 @@ export const useWeatherStore = create<WeatherStore>((set, get) => ({
 
   fetchPireps: async () => {
     try {
-      const pireps = await weatherAPI.getPIREPs();
-      set({ pireps });
+      const { data, error } = await supabase.from('pireps').select('*, profiles(username)').order('created_at', { ascending: false });
+      if (error) throw error;
+      set({ pireps: data });
     } catch (error) {
       set({ pireps: MOCK_PIREPS });
     }
@@ -108,66 +80,59 @@ export const useWeatherStore = create<WeatherStore>((set, get) => ({
   submitPirep: async (pirepData) => {
     set({ isLoading: true });
     try {
-      const newPirep = await weatherAPI.submitPIREP(pirepData);
-      set(state => ({ pireps: [newPirep, ...state.pireps], isLoading: false }));
-    } catch (error) {
-      const newPirep = { ...pirepData, id: Math.floor(Math.random() * 10000), submitted_at: new Date().toISOString() };
-      set(state => ({ pireps: [newPirep, ...state.pireps], isLoading: false }));
-    }
-  },
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-  updatePreferences: (prefs) => set(state => state.user ? ({ user: { ...state.user, preferences: { ...state.user.preferences, ...prefs } } }) : state),
-  updateUserProfile: async (profile) => {
-    set({ isLoading: true });
-    set(state => state.user ? ({ user: { ...state.user, ...profile }, isLoading: false }) : { isLoading: false });
+      const { data, error } = await supabase.from('pireps').insert([{
+        ...pirepData,
+        submitted_by: user.id
+      }]).select().single();
+
+      if (error) throw error;
+      set(state => ({ pireps: [data, ...state.pireps], isLoading: false }));
+    } catch (error) {
+      set({ isLoading: false });
+    }
   },
 
   fetchAirportDetails: async (icao) => {
     try {
-      const details = await weatherAPI.getAirportDetails(icao);
-      if (details) set(state => ({ airportDetails: { ...state.airportDetails, [icao]: details } }));
-    } catch (error) {}
-  },
-
-  fetchAllAirports: async () => {
-    set({ isLoading: true, error: null });
-    try {
-      const airports = await weatherAPI.getAllAirports();
-      const airportMap = airports.reduce((acc, airport) => {
-        acc[airport.icao] = airport;
-        return acc;
-      }, {} as Record<string, AirportDetails>);
-      set(state => ({ airportDetails: { ...state.airportDetails, ...airportMap }, isLoading: false }));
+      const { data, error } = await supabase.from('airports').select('*').eq('icao', icao.toUpperCase()).single();
+      if (error) throw error;
+      set(state => ({ airportDetails: { ...state.airportDetails, [icao]: data } }));
     } catch (error) {
-      set({ isLoading: false, error: 'Failed to load airport data.' });
+      // Fallback or handle error
     }
   },
 
-  fetchAirportsInBounds: async () => {
-    await get().fetchAllAirports();
+  fetchAllAirports: async () => {
+    try {
+      const { data, error } = await supabase.from('airports').select('*');
+      if (error) throw error;
+      const airportMap = data.reduce((acc, airport) => {
+        acc[airport.icao] = airport;
+        return acc;
+      }, {} as any);
+      set(state => ({ airportDetails: { ...state.airportDetails, ...airportMap } }));
+    } catch (error) {}
   },
 
   generateFlightPlan: async (dep, dest) => {
     set({ isLoading: true, activeFlightPlan: null });
     try {
-      const [dm, ds, dn, dsn] = await Promise.all([weatherAPI.getMETAR(dep), weatherAPI.getMETAR(dest), weatherAPI.getNOTAMs(dep), weatherAPI.getNOTAMs(dest)]);
-      set({ activeFlightPlan: { departure: { icao: dep, metar: dm, taf: null, notams: dn }, destination: { icao: dest, metar: ds, taf: null, notams: dsn } }, isLoading: false });
-    } catch (error) {
-      set({ isLoading: false });
-    }
-  },
-
-  updateUserRole: (userId, role) => set(state => ({ allUsers: state.allUsers.map(u => u.id === userId ? { ...u, role } : u) })),
-  deleteUser: (userId) => set(state => ({ allUsers: state.allUsers.filter(u => u.id !== userId) })),
-  updateApiKeys: async (keys) => {
-    set({ isLoading: true });
-    set(state => ({ apiKeys: { ...state.apiKeys, ...keys }, isLoading: false }));
-  },
-  loadAirportData: async () => {
-    set({ isLoading: true });
-    try {
-      await weatherAPI.loadAirportData();
-      set({ isLoading: false });
+      const [dm, ds, dn, dsn] = await Promise.all([
+        weatherAPI.getMETAR(dep),
+        weatherAPI.getMETAR(dest),
+        weatherAPI.getNOTAMs(dep),
+        weatherAPI.getNOTAMs(dest)
+      ]);
+      set({ 
+        activeFlightPlan: { 
+          departure: { icao: dep, metar: dm, taf: null, notams: dn }, 
+          destination: { icao: dest, metar: ds, taf: null, notams: dsn } 
+        }, 
+        isLoading: false 
+      });
     } catch (error) {
       set({ isLoading: false });
     }
