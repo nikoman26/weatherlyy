@@ -52,7 +52,13 @@ export const useWeatherStore = create<WeatherStore>((set, get) => ({
         .eq('id', session.user.id)
         .single();
       
-      set({ user: { ...session.user, ...profile } });
+      const formattedUser = profile ? {
+          ...session.user,
+          ...profile,
+          favoriteAirports: profile.favorite_airports || []
+      } : session.user;
+
+      set({ user: formattedUser });
     }
   },
 

@@ -10,7 +10,7 @@ const Dashboard = () => {
 
   // Initial load
   useEffect(() => {
-    if (user?.favoriteAirports) {
+    if (user?.favoriteAirports && user.favoriteAirports.length > 0) {
       user.favoriteAirports.forEach(icao => fetchWeather(icao));
       // Set default active airport to first favorite if not set
       if (!activeAirport) {
@@ -34,7 +34,7 @@ const Dashboard = () => {
   const recentPireps = pireps.slice(0, 3);
   
   // Determine which airport data to show in the main card
-  const displayIcao = activeAirport || (user?.favoriteAirports ? user.favoriteAirports[0] : 'KJFK');
+  const displayIcao = activeAirport || (user?.favoriteAirports?.length ? user.favoriteAirports[0] : 'KJFK');
   const displayWeather = weatherData[displayIcao];
 
   // Simulated Nearest Airports Data
@@ -78,9 +78,9 @@ const Dashboard = () => {
             <h3 className="text-xl font-semibold text-slate-200 flex items-center gap-2">
               Current Conditions <span className="text-sm font-normal text-slate-500">| {displayIcao}</span>
             </h3>
-            {displayIcao !== user?.favoriteAirports[0] && (
+            {user?.favoriteAirports?.length > 0 && displayIcao !== user.favoriteAirports[0] && (
                <button 
-                  onClick={() => user?.favoriteAirports[0] && setActiveAirport(user.favoriteAirports[0])}
+                  onClick={() => user.favoriteAirports[0] && setActiveAirport(user.favoriteAirports[0])}
                   className="text-xs text-sky-400 hover:underline"
                >
                  Reset to Default
@@ -103,7 +103,7 @@ const Dashboard = () => {
           {/* Favorites Grid */}
           <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mt-8 mb-4">Monitored Stations</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {user?.favoriteAirports.map(icao => {
+            {user?.favoriteAirports?.map(icao => {
               const data = weatherData[icao]?.metar;
               // Skip if this is the currently displayed main airport to avoid duplication visual
               if (icao === displayIcao) return null; 
