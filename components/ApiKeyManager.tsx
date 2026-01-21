@@ -3,7 +3,9 @@ import { useWeatherStore } from '../store/weatherStore.ts';
 import { KeyRound, Save, CheckCircle } from 'lucide-react';
 
 const ApiKeyManager = () => {
-    const { apiKeys, updateApiKeys, isLoading } = useWeatherStore();
+    const { apiKeys: storeApiKeys, updateApiKeys, isLoading } = useWeatherStore();
+    // Provide a safe default value for keys if storeApiKeys is undefined/null
+    const apiKeys = storeApiKeys || {}; 
     const [keys, setKeys] = useState(apiKeys);
     const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
 
@@ -50,7 +52,8 @@ const ApiKeyManager = () => {
                             type="text"
                             id={field.name}
                             name={field.name}
-                            value={keys[field.name as keyof typeof keys]}
+                            // Safely access the key value
+                            value={keys[field.name as keyof typeof keys] || ''}
                             onChange={handleChange}
                             className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white font-mono text-sm focus:border-sky-500 focus:outline-none"
                         />
