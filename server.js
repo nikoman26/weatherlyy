@@ -30,7 +30,8 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 const allowedOrigins = [
   'http://localhost:3000',
   'https://weatherlyy-ten.vercel.app',
-  'https://weatherlyy-eedzqe80t-nikoman26s-projects.vercel.app'
+  'https://weatherlyy-eedzqe80t-nikoman26s-projects.vercel.app',
+  'https://weatherly.co.ke'
 ];
 
 const corsOptions = {
