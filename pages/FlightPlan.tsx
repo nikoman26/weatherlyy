@@ -15,7 +15,7 @@ const FlightPlan = () => {
   const handleGenerate = (e: React.FormEvent) => {
     e.preventDefault();
     if (departure && destination) {
-      generateFlightPlan(departure.toUpperCase(), destination.toUpperCase());
+      generateFlightPlan(departure.toUpperCase(), destination.toUpperCase(), aircraftType);
     }
   };
 
@@ -61,8 +61,8 @@ ${activeFlightPlan.departure.notams.map(n => n.number + ': ' + n.text).join('\n'
         notams.slice(0, 3).map((notam) => (
           <div key={notam.id} className="bg-slate-800/50 p-3 rounded border border-slate-700/50 text-xs">
             <div className="flex justify-between items-center mb-1">
-              <span className="font-bold text-amber-500">{notam.number}</span>
-              <span className="text-slate-500">Effective: {new Date(notam.start).toLocaleDateString()}</span>
+              <span className="font-bold text-amber-500 font-mono">{notam.number}</span>
+              <span className="text-xs text-slate-500">Effective: {new Date(notam.start).toLocaleDateString()}</span>
             </div>
             <p className="font-mono text-slate-300">{notam.text}</p>
           </div>

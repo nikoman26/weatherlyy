@@ -7,15 +7,32 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 class WeatherAPI {
   private async fetchFromAPI(endpoint: string, options: RequestInit = {}) {
     const url = `${API_BASE_URL}${endpoint}`;
+    
+    // Get JWT token from local storage/session (assuming it's managed by Supabase client)
+    // NOTE: We rely on the global L.supabase being available, which is set up in the App.tsx/SessionProvider flow.
+    const session = await window.L.supabase.auth.getSession();
+    const token = session.data.session?.access_token;
+
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(token && { 'Authorization': `Bearer ${token}` }),
+      ...options.headers,
+    };
+
     try {
       const response = await fetch(url, {
         ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers,
-        },
+        headers,
       });
-      if (!response.ok) throw new Error(`API Error: ${response.status} ${response.statusText}`);
+      
+      if (response.status === 401) {
+          // Handle unauthorized access (e.g., token expired)
+          throw new Error('Unauthorized access. Please log in again.');
+      }
+      if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || errorData.error || `API Error: ${response.status} ${response.statusText}`);
+      }
       return await response.json();
     } catch (error) {
       console.error(`API request failed for ${endpoint}:`, error);
@@ -102,15 +119,22 @@ class WeatherAPI {
       weather_conditions: pirep.weather_conditions || '',
       turbulence: pirep.turbulence || '',
       icing: pirep.icing || '',
-      submitted_at: pirep.submitted_at || new Date().toISOString(),
-      remarks: pirep.remarks
+      submitted_at: pirep.created_at || new Date().toISOString(), // Use created_at from DB
+      remarks: pirep.remarks,
+      profiles: pirep.profiles // Include profile data for username
     }));
   }
 
-  async submitPIREP(pirepData: Omit<Pirep, 'id' | 'submitted_at'>): Promise<Pirep> {
+  async submitPIREP(pirepData: Omit<Pirep, 'id' | 'submitted_at' | 'profiles'>): Promise<Pirep> {
     const data = await this.fetchFromAPI('/pireps', { method: 'POST', body: JSON.stringify(pirepData) });
     if (!data.success) throw new Error(data.message || 'Failed to submit PIREP');
     return data.data;
+  }
+  
+  async saveFlightPlan(planData: any): Promise<any> {
+      const data = await this.fetchFromAPI('/flight-plans', { method: 'POST', body: JSON.stringify(planData) });
+      if (!data.success) throw new Error(data.message || 'Failed to save flight plan');
+      return data.data;
   }
 
   async getAirportDetails(icao: string): Promise<AirportDetails | null> {
@@ -148,6 +172,29 @@ class WeatherAPI {
     const data = await this.fetchFromAPI('/admin/load-airports', { method: 'POST' });
     if (!data.success) throw new Error(data.message || 'Failed to load airport data');
     return data;
+  }
+  
+  // --- Admin API Methods ---
+  
+  async fetchAllUsers(): Promise<any[]> {
+      const data = await this.fetchFromAPI('/admin/users');
+      if (!data.success || !Array.isArray(data.data)) throw new Error(data.message || 'Failed to fetch user list');
+      return data.data;
+  }
+  
+  async updateRole(userId: string, role: string): Promise<void> {
+      const data = await this.fetchFromAPI(`/admin/users/${userId}/role`, {
+          method: 'PUT',
+          body: JSON.stringify({ role })
+      });
+      if (!data.success) throw new Error(data.message || 'Failed to update user role');
+  }
+  
+  async deleteUser(userId: string): Promise<void> {
+      const data = await this.fetchFromAPI(`/admin/users/${userId}`, {
+          method: 'DELETE'
+      });
+      if (!data.success) throw new Error(data.message || 'Failed to delete user');
   }
 }
 

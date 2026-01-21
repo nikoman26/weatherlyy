@@ -1,5 +1,5 @@
 export interface User {
-  id: number;
+  id: string; // Changed to string/UUID for Supabase
   username: string;
   email: string;
   role: string;
@@ -107,6 +107,10 @@ export interface Pirep {
   icing: string;
   submitted_at: string;
   remarks?: string;
+  // Added for display in Pireps.tsx
+  profiles?: {
+    username: string;
+  }
 }
 
 export interface AirportDetails {

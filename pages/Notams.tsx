@@ -1,14 +1,34 @@
-import React, { useState } from 'react';
-import { MOCK_NOTAMS } from '../services/mockData.ts';
+import React, { useState, useEffect } from 'react';
+import { useWeatherStore } from '../store/weatherStore.ts';
 import { List, Search, MapPin, X } from 'lucide-react';
+import { Notam } from '../types.ts';
 
 const Notams = () => {
-  const [selectedNotam, setSelectedNotam] = useState<any | null>(null);
+  const { notams, fetchNotams, user } = useWeatherStore();
+  const [selectedNotam, setSelectedNotam] = useState<Notam | null>(null);
+  const [filterIcao, setFilterIcao] = useState('');
   
-  // Flatten all notams for map display
-  const allNotams = Object.entries(MOCK_NOTAMS).flatMap(([icao, list]) => 
+  // Determine which ICAOs to fetch initially (favorites + default)
+  const initialIcaos = Array.from(new Set(['KJFK', ...(user?.favoriteAirports || [])]));
+
+  useEffect(() => {
+    // Fetch NOTAMs for initial ICAOs on mount
+    initialIcaos.forEach(icao => fetchNotams(icao));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const icao = e.target.value.toUpperCase();
+      setFilterIcao(icao);
+      if (icao.length === 4) {
+          fetchNotams(icao);
+      }
+  };
+
+  // Flatten all notams for display, filtering by input if present
+  const allNotams = Object.entries(notams).flatMap(([icao, list]) => 
       list.map(n => ({...n, station: icao}))
-  );
+  ).filter(n => n.station.includes(filterIcao));
 
   return (
     <div className="h-[calc(100vh-8rem)] flex flex-col lg:flex-row gap-6">
@@ -22,12 +42,18 @@ const Notams = () => {
                     <input 
                         type="text" 
                         placeholder="Filter by ICAO..." 
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg py-2 pl-3 pr-10 text-sm text-white focus:outline-none focus:border-sky-500"
+                        value={filterIcao}
+                        onChange={handleFilterChange}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg py-2 pl-3 pr-10 text-sm text-white focus:outline-none focus:border-sky-500 uppercase"
+                        maxLength={4}
                     />
                     <Search size={16} className="absolute right-3 top-2.5 text-slate-500" />
                 </div>
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar">
+                {allNotams.length === 0 && (
+                    <div className="text-center text-slate-500 p-4">No NOTAMs found.</div>
+                )}
                 {allNotams.map(notam => (
                     <div 
                         key={notam.id}
@@ -59,16 +85,20 @@ const Notams = () => {
 
              {/* Simulated Map Markers */}
              {allNotams.map((notam, index) => {
-                 // Random positioning for demo purposes since we don't have a real projection library loaded here
-                 // In a real app, we'd use Leaflet or Mapbox with lat/lng
-                 const top = 20 + (index * 15) + '%';
-                 const left = 20 + (index * 20) + '%';
+                 // Use coordinates if available, otherwise use mock positioning
+                 const lat = notam.coordinates?.lat || 40.7 + (index * 0.1);
+                 const lng = notam.coordinates?.lng || -74.0 + (index * 0.1);
+                 
+                 // Simple hash to map coordinates to screen position for demo (since we don't have a real projection here)
+                 // This is a placeholder for a real Leaflet/Mapbox implementation
+                 const top = `${(lat % 10) * 8 + 20}%`;
+                 const left = `${(lng % 10) * 8 + 20}%`;
                  
                  return (
                      <button
                         key={notam.id}
                         onClick={() => setSelectedNotam(notam)}
-                        style={{ top, left }}
+                        style={{ top: `${(index * 15) % 80 + 10}%`, left: `${(index * 20) % 80 + 10}%` }}
                         className="absolute transform -translate-x-1/2 -translate-y-1/2 group/marker z-10 hover:z-30 transition-all"
                      >
                          <div className={`w-4 h-4 rounded-full border-2 border-white shadow-lg ${selectedNotam?.id === notam.id ? 'bg-sky-500 scale-125' : 'bg-red-500'} animate-pulse`}></div>

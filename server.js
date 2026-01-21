@@ -17,14 +17,18 @@ const PORT = process.env.PORT || 3001;
 
 // Supabase client setup
 const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY; // Used for client-side auth
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY; // Used for admin actions
 
 if (!supabaseUrl || !supabaseServiceKey) {
   console.error('Missing Supabase configuration');
   process.exit(1);
 }
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+// Client for RLS-protected operations (used by authenticateUser)
+const supabase = createClient(supabaseUrl, supabaseAnonKey); 
+// Admin client for privileged operations (used by admin routes)
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey); 
 
 // Allowed origins for CORS
 const allowedOrigins = [
@@ -93,12 +97,32 @@ const authenticateUser = async (req, res, next) => {
       return res.status(401).json({ error: 'Invalid token' });
     }
 
-    req.user = user;
+    // Fetch user profile to get the role
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError && profileError.code !== 'PGRST116') {
+        console.error('Profile fetch error during auth:', profileError);
+        // Proceed but user role might be null/default
+    }
+    
+    req.user = { ...user, role: profile?.role || 'user' };
     next();
   } catch (error) {
     console.error('Authentication error:', error);
     return res.status(401).json({ error: 'Authentication failed' });
   }
+};
+
+// Admin Authorization Middleware
+const authorizeAdmin = (req, res, next) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Forbidden: Admin access required' });
+    }
+    next();
 };
 
 // Routes
@@ -117,7 +141,7 @@ app.get('/api/health', (req, res) => {
 app.get('/api/auth/profile', authenticateUser, async (req, res) => {
   try {
     const { data: userProfile, error } = await supabase
-      .from('users')
+      .from('profiles')
       .select('*')
       .eq('id', req.user.id)
       .single();
@@ -267,31 +291,25 @@ app.get('/api/notams', authenticateUser, async (req, res) => {
   }
 });
 
-// Fetch PIREPs (Minimal Mock until database logic is implemented)
+// Fetch PIREPs (Supabase Integration)
 app.get('/api/pireps', authenticateUser, async (req, res) => {
   try {
-    const { icao } = req.query;
-    
-    // TEMPORARY MOCK: Replace with real Supabase query when implemented
-    const mockData = [{
-      id: 1,
-      icao_code: icao || 'KJFK',
-      aircraft_type: 'B737',
-      flight_level: '350',
-      latitude: 40.7,
-      longitude: -74.0,
-      weather_conditions: 'Clear skies',
-      turbulence: 'Light chop',
-      icing: 'None',
-      submitted_at: new Date(Date.now() - 3600000).toISOString(),
-      users: { username: 'PilotUser', email: 'pilot@example.com' }
-    }];
+    // Fetch PIREPs, joining with profiles to get the username
+    const { data: pirepData, error } = await supabase
+      .from('pireps')
+      .select('*, profiles(username)')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Supabase PIREP fetch error:', error);
+      return res.status(500).json({ success: false, message: 'Database error fetching PIREPs', error: error.message });
+    }
 
     res.json({
       success: true,
-      code: 'MOCK_PLACEHOLDER',
-      message: 'PIREP data retrieved (MOCK PLACEHOLDER)',
-      data: mockData
+      code: 'SUPABASE',
+      message: 'PIREP data retrieved from Supabase',
+      data: pirepData
     });
 
   } catch (error) {
@@ -304,33 +322,39 @@ app.get('/api/pireps', authenticateUser, async (req, res) => {
   }
 });
 
-// Submit PIREP (Minimal Mock until database logic is implemented)
+// Submit PIREP (Supabase Integration)
 app.post('/api/pireps', authenticateUser, async (req, res) => {
   try {
+    const { icao_code, aircraft_type, flight_level, aircraft_position, weather_conditions, turbulence, icing, remarks } = req.body;
+
     const pirepData = {
-      icao_code: req.body.icao_code,
-      aircraft_type: req.body.aircraft_type,
-      flight_level: req.body.flight_level,
-      latitude: req.body.aircraft_position?.latitude,
-      longitude: req.body.aircraft_position?.longitude,
-      weather_conditions: req.body.weather_conditions,
-      turbulence: req.body.turbulence,
-      icing: req.body.icing,
-      remarks: req.body.remarks,
+      icao_code,
+      aircraft_type,
+      flight_level,
+      latitude: aircraft_position?.latitude,
+      longitude: aircraft_position?.longitude,
+      weather_conditions,
+      turbulence,
+      icing,
+      remarks,
       submitted_by: req.user.id
     };
 
-    // TEMPORARY MOCK: Replace with real Supabase insert when implemented
-    const newPirep = {
-      ...pirepData,
-      id: Math.floor(Math.random() * 10000),
-      submitted_at: new Date().toISOString()
-    };
+    const { data: newPirep, error } = await supabase
+      .from('pireps')
+      .insert([pirepData])
+      .select('*, profiles(username)')
+      .single();
+
+    if (error) {
+      console.error('Supabase PIREP insert error:', error);
+      return res.status(500).json({ success: false, message: 'Database error submitting PIREP', error: error.message });
+    }
 
     res.json({
       success: true,
-      code: 'MOCK_PLACEHOLDER',
-      message: 'PIREP submitted successfully (MOCK PLACEHOLDER)',
+      code: 'SUPABASE',
+      message: 'PIREP submitted successfully',
       data: newPirep
     });
 
@@ -426,11 +450,7 @@ app.get('/api/airports/all', authenticateUser, async (req, res) => {
 
 
 // Admin route to load airport data
-app.post('/api/admin/load-airports', authenticateUser, async (req, res) => {
-  if (req.user.role !== 'admin') {
-    return res.status(403).json({ success: false, message: 'Forbidden: Admin access required' });
-  }
-
+app.post('/api/admin/load-airports', authenticateUser, authorizeAdmin, async (req, res) => {
   try {
     // Read the JSON file (assuming it's placed in the 'data' directory relative to the server start location)
     const filePath = path.join(__dirname, 'data/airports.json');
@@ -450,7 +470,7 @@ app.post('/api/admin/load-airports', authenticateUser, async (req, res) => {
     }));
 
     // Perform bulk upsert (insert or update if ICAO exists)
-    const { error } = await supabase
+    const { error } = await supabaseAdmin // Use Admin client for bulk operations
       .from('airports')
       .upsert(formattedAirports, { onConflict: 'icao' });
 
@@ -475,32 +495,97 @@ app.post('/api/admin/load-airports', authenticateUser, async (req, res) => {
   }
 });
 
+// ADMIN: Fetch all user profiles
+app.get('/api/admin/users', authenticateUser, authorizeAdmin, async (req, res) => {
+    try {
+        const { data: users, error } = await supabase
+            .from('profiles')
+            .select('*');
 
-// Save Flight Plan (Minimal Mock until database logic is implemented)
+        if (error) throw error;
+
+        res.json({ success: true, data: users });
+    } catch (error) {
+        console.error('Admin fetch users error:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch user list.' });
+    }
+});
+
+// ADMIN: Update user role
+app.put('/api/admin/users/:id/role', authenticateUser, authorizeAdmin, async (req, res) => {
+    const { id } = req.params;
+    const { role } = req.body;
+
+    if (!role || (role !== 'admin' && role !== 'user')) {
+        return res.status(400).json({ success: false, message: 'Invalid role specified.' });
+    }
+
+    try {
+        const { error } = await supabase
+            .from('profiles')
+            .update({ role })
+            .eq('id', id);
+
+        if (error) throw error;
+
+        res.json({ success: true, message: `Role updated for user ${id}` });
+    } catch (error) {
+        console.error('Admin update role error:', error);
+        res.status(500).json({ success: false, message: 'Failed to update user role.' });
+    }
+});
+
+// ADMIN: Delete user (Requires Service Role Key)
+app.delete('/api/admin/users/:id', authenticateUser, authorizeAdmin, async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        // 1. Delete user from auth.users using the Admin client
+        const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(id);
+
+        if (authError) {
+            console.error('Supabase Admin delete auth user error:', authError);
+            throw new Error(authError.message);
+        }
+
+        res.json({ success: true, message: `User ${id} deleted successfully.` });
+    } catch (error) {
+        console.error('Admin delete user error:', error);
+        res.status(500).json({ success: false, message: 'Failed to delete user.' });
+    }
+});
+
+
+// Save Flight Plan (Supabase Integration)
 app.post('/api/flight-plans', authenticateUser, async (req, res) => {
   try {
+    const { departure_icao, destination_icao, aircraft_type, planned_departure, flight_rules, route } = req.body;
+
     const flightPlanData = {
       user_id: req.user.id,
-      departure_icao: req.body.departure?.icao,
-      destination_icao: req.body.destination?.icao,
-      aircraft_type: req.body.aircraft_type,
-      planned_departure: req.body.planned_departure,
-      flight_rules: req.body.flight_rules || 'VFR',
-      route: req.body.route,
-      aircraft_identification: req.body.aircraft_identification
+      departure_icao,
+      destination_icao,
+      aircraft_type,
+      planned_departure,
+      flight_rules: flight_rules || 'VFR',
+      route: route || [],
     };
 
-    // TEMPORARY MOCK: Replace with real Supabase insert when implemented
-    const newFlightPlan = {
-      ...flightPlanData,
-      id: Math.floor(Math.random() * 10000),
-      created_at: new Date().toISOString()
-    };
+    const { data: newFlightPlan, error } = await supabase
+      .from('flight_plans')
+      .insert([flightPlanData])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Supabase Flight Plan insert error:', error);
+      return res.status(500).json({ success: false, message: 'Database error saving flight plan', error: error.message });
+    }
 
     res.json({
       success: true,
-      code: 'MOCK_PLACEHOLDER',
-      message: 'Flight plan saved successfully (MOCK PLACEHOLDER)',
+      code: 'SUPABASE',
+      message: 'Flight plan saved successfully',
       data: newFlightPlan
     });
 
@@ -563,7 +648,8 @@ app.listen(PORT, () => {
   console.log(`🗄️  Supabase connected: ${supabaseUrl}`);
   console.log(`🔐 Authentication: JWT with Supabase Auth`);
   console.log(`✅ Core Weather Endpoints now use REAL API data.`);
-  console.log(`⚠️  NOTAMs, PIREPs, and Flight Plans still use MOCK PLACEHOLDERS.`);
+  console.log(`✅ PIREPs, Admin User Management, and Flight Plan Saving now use Supabase database.`);
+  console.log(`⚠️  NOTAMs still use MOCK PLACEHOLDERS.`);
 });
 
 export default app;
