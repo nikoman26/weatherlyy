@@ -20,11 +20,30 @@ const InteractiveMap: React.FC<InteractiveMapProps> = ({ className, onClick, ena
   const mapInstanceRef = useRef<any>(null);
   const layerGroupRef = useRef<any>(null); // To hold dynamic markers/polylines
 
-  const { activeFlightPlan, airportDetails, user, pireps } = useWeatherStore();
+  const { activeFlightPlan, airportDetails, user, pireps, fetchAirportsInBounds } = useWeatherStore();
 
   // Configuration for API Keys (These are placeholders for the frontend)
   const OPENWEATHER_API_KEY = 'YOUR_OWM_API_KEY'; 
   const OPENAIP_API_KEY = 'YOUR_OPENAIP_API_KEY'; 
+
+  // Function to fetch airports based on current map bounds
+  const updateAirports = () => {
+      const map = mapInstanceRef.current;
+      if (!map) return;
+
+      const bounds = map.getBounds();
+      const boundsData = {
+          minLat: bounds.getSouth(),
+          maxLat: bounds.getNorth(),
+          minLng: bounds.getWest(),
+          maxLng: bounds.getEast(),
+      };
+      
+      // Only fetch if the map is zoomed in enough (e.g., zoom level 6 or higher)
+      if (map.getZoom() >= 6) {
+          fetchAirportsInBounds(boundsData);
+      }
+  };
 
   // Initialize Map Base
   useEffect(() => {
@@ -90,6 +109,16 @@ const InteractiveMap: React.FC<InteractiveMapProps> = ({ className, onClick, ena
 
     L.control.layers(baseMaps, overlayMaps).addTo(map);
 
+    // 6. Airport Fetching on Map Move/Zoom
+    const debouncedUpdateAirports = debounce(updateAirports, 500);
+    map.on('moveend', debouncedUpdateAirports);
+    map.on('zoomend', debouncedUpdateAirports);
+    
+    // Initial load
+    map.whenReady(() => {
+        updateAirports();
+    });
+
     // Legend
     const info = L.control({ position: 'bottomleft' });
     info.onAdd = function () {
@@ -112,10 +141,21 @@ const InteractiveMap: React.FC<InteractiveMapProps> = ({ className, onClick, ena
     info.addTo(map);
 
     return () => {
+      map.off('moveend', debouncedUpdateAirports);
+      map.off('zoomend', debouncedUpdateAirports);
       map.remove();
       mapInstanceRef.current = null;
     };
   }, []); // Only run once on mount
+
+  // Debounce utility function (defined outside of component or imported)
+  const debounce = (func: Function, delay: number) => {
+    let timeoutId: NodeJS.Timeout;
+    return function(...args: any[]) {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => func.apply(this, args), delay);
+    };
+  };
 
   // Handle Dynamic Data (Markers & Routes)
   useEffect(() => {
@@ -192,27 +232,24 @@ const InteractiveMap: React.FC<InteractiveMapProps> = ({ className, onClick, ena
                   dashArray: '10, 10'
               }).addTo(layers);
               
-              // Fit bounds to route
-              map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
+              // Fit bounds to route (only if map is not already zoomed in)
+              if (map.getZoom() < 5) {
+                 map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
+              }
           }
       } else if (!enablePirepMarkers) {
-          // 3. Plot all currently loaded airport details (from bulk fetch or favorites)
+          // 3. Plot all currently loaded airport details (from bounds fetch)
           Object.keys(airportDetails).forEach(icao => {
               const isFav = user?.favoriteAirports.includes(icao);
-              const isRoute = activeFlightPlan && (activeFlightPlan.departure.icao === icao || activeFlightPlan.destination.icao === icao);
               
               let color = '#8b5cf6'; // Purple for dynamically loaded
               if (isFav) color = '#0ea5e9'; // Blue for favorites
-              if (isRoute) {
-                  if (activeFlightPlan.departure.icao === icao) color = '#22c55e'; // Green for departure
-                  if (activeFlightPlan.destination.icao === icao) color = '#ef4444'; // Red for destination
-              }
               
               addAirportMarker(icao, color);
           });
       }
 
-  }, [activeFlightPlan, airportDetails, user, pireps, enablePirepMarkers]);
+  }, [activeFlightPlan, airportDetails, user, pireps, enablePirepMarkers, fetchAirportsInBounds]);
 
   return (
     <div className={`relative w-full rounded-xl overflow-hidden border border-slate-800 shadow-xl ${className || 'h-full'}`}>

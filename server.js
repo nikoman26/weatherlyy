@@ -418,13 +418,24 @@ app.get('/api/airports', authenticateUser, async (req, res) => {
   }
 });
 
-// NEW: Fetch All Airport Details (Supabase only - bulk fetch)
+// NEW: Fetch Airports in Bounds (Supabase only - bulk fetch)
 app.get('/api/airports/all', authenticateUser, async (req, res) => {
   try {
-    // Query Supabase for all airport details
-    const { data: airportData, error } = await supabase
+    const { minLat, maxLat, minLng, maxLng } = req.query;
+    
+    let query = supabase
       .from('airports')
       .select('*');
+
+    // Apply bounding box filters if provided
+    if (minLat && maxLat) {
+        query = query.gte('latitude', parseFloat(minLat)).lte('latitude', parseFloat(maxLat));
+    }
+    if (minLng && maxLng) {
+        query = query.gte('longitude', parseFloat(minLng)).lte('longitude', parseFloat(maxLng));
+    }
+
+    const { data: airportData, error } = await query;
 
     if (error) {
       console.error('Supabase bulk airport fetch error:', error);
@@ -433,8 +444,8 @@ app.get('/api/airports/all', authenticateUser, async (req, res) => {
 
     res.json({
       success: true,
-      code: 'SUPABASE_ALL',
-      message: 'All airport details retrieved from Supabase',
+      code: 'SUPABASE_BOUNDS',
+      message: 'Airport details retrieved from Supabase within bounds',
       data: airportData
     });
 
@@ -649,6 +660,7 @@ app.listen(PORT, () => {
   console.log(`🔐 Authentication: JWT with Supabase Auth`);
   console.log(`✅ Core Weather Endpoints now use REAL API data.`);
   console.log(`✅ PIREPs, Admin User Management, and Flight Plan Saving now use Supabase database.`);
+  console.log(`✅ Airport fetching now supports bounding box filtering.`);
   console.log(`⚠️  NOTAMs still use MOCK PLACEHOLDERS.`);
 });
 

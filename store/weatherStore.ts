@@ -15,6 +15,13 @@ interface UserProfileUpdate {
   pilotCertification?: string;
 }
 
+interface Bounds {
+    minLat: number;
+    maxLat: number;
+    minLng: number;
+    maxLng: number;
+}
+
 interface WeatherStore {
   user: any | null;
   activeAirport: string | null;
@@ -35,7 +42,7 @@ interface WeatherStore {
   fetchPireps: () => Promise<void>;
   submitPirep: (pirep: any) => Promise<void>;
   fetchAirportDetails: (icao: string) => Promise<void>;
-  fetchAllAirports: () => Promise<void>;
+  fetchAirportsInBounds: (bounds?: Bounds) => Promise<void>; // Renamed and updated signature
   generateFlightPlan: (dep: string, dest: string, aircraftType: string) => Promise<void>;
   
   // Settings & Admin Actions
@@ -155,15 +162,19 @@ export const useWeatherStore = create<WeatherStore>((set, get) => ({
     }
   },
 
-  fetchAllAirports: async () => {
+  fetchAirportsInBounds: async (bounds) => {
     try {
-      const data = await weatherAPI.getAllAirports();
+      const data = await weatherAPI.fetchAirportsInBounds(bounds);
       const airportMap = data.reduce((acc, airport) => {
         acc[airport.icao] = airport;
         return acc;
       }, {} as any);
+      
+      // Only update the airports that are currently in view, preserving others
       set(state => ({ airportDetails: { ...state.airportDetails, ...airportMap } }));
-    } catch (error) {}
+    } catch (error) {
+        console.error("Failed to fetch airports in bounds:", error);
+    }
   },
 
   generateFlightPlan: async (dep, dest, aircraftType) => {

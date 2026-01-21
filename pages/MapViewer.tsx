@@ -4,12 +4,7 @@ import { Map as MapIcon } from 'lucide-react';
 import { useWeatherStore } from '../store/weatherStore.ts';
 
 const MapViewer = () => {
-  const { fetchAllAirports } = useWeatherStore();
-
-  useEffect(() => {
-    // Fetch all airport data when the map viewer is opened
-    fetchAllAirports();
-  }, [fetchAllAirports]);
+  // Removed fetchAllAirports call. The map component will now handle fetching based on bounds.
 
   return (
     <div className="h-[calc(100vh-6rem)] flex flex-col gap-4">

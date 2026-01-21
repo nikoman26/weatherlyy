@@ -153,9 +153,14 @@ class WeatherAPI {
     };
   }
   
-  async getAllAirports(): Promise<AirportDetails[]> {
-    const data = await this.fetchFromAPI(`/airports/all`);
-    if (!data.success || !Array.isArray(data.data)) throw new Error(data.message || 'Failed to fetch all airport data');
+  async fetchAirportsInBounds(bounds?: { minLat: number, maxLat: number, minLng: number, maxLng: number }): Promise<AirportDetails[]> {
+    let endpoint = `/airports/all`;
+    if (bounds) {
+        endpoint += `?minLat=${bounds.minLat}&maxLat=${bounds.maxLat}&minLng=${bounds.minLng}&maxLng=${bounds.maxLng}`;
+    }
+    
+    const data = await this.fetchFromAPI(endpoint);
+    if (!data.success || !Array.isArray(data.data)) throw new Error(data.message || 'Failed to fetch airport data');
     return data.data.map((airport: any) => ({
       icao: airport.icao,
       name: airport.name,
