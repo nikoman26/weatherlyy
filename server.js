@@ -26,9 +26,9 @@ if (!supabaseUrl || !supabaseServiceKey) {
 }
 
 // Client for RLS-protected operations (used by authenticateUser)
-const supabase = createClient(supabaseUrl, supabaseAnonKey); 
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 // Admin client for privileged operations (used by admin routes)
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey); 
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
 // Allowed origins for CORS
 const allowedOrigins = [
@@ -59,12 +59,12 @@ app.use(express.json());
 
 // API Keys from environment (secured in backend)
 const API_KEYS = {
-  checkwx: process.env.CHECKWX_API_KEY,
-  icao: process.env.ICAO_API_KEY,
-  openweather: process.env.OPENWEATHER_API_KEY,
-  windy: process.env.WINDY_API_KEY,
-  avwx: process.env.AVWX_API_KEY,
-  openaip: process.env.OPENAIP_API_KEY
+  checkwx: process.env.CHECKWX_API_KEY || null,
+  icao: process.env.ICAO_API_KEY || null,
+  openweather: process.env.OPENWEATHER_API_KEY || null,
+  windy: process.env.WINDY_API_KEY || null,
+  avwx: process.env.AVWX_API_KEY || null,
+  openaip: process.env.OPENAIP_API_KEY || null
 };
 
 // Helper function to make API requests
@@ -108,7 +108,7 @@ const authenticateUser = async (req, res, next) => {
         console.error('Profile fetch error during auth:', profileError);
         // Proceed but user role might be null/default
     }
-    
+
     req.user = { ...user, role: profile?.role || 'user' };
     next();
   } catch (error) {
@@ -129,11 +129,19 @@ const authorizeAdmin = (req, res, next) => {
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     timestamp: new Date().toISOString(),
     supabase: 'connected',
-    version: '2.0.0'
+    version: '2.0.0',
+    apiKeys: {
+      checkwx: API_KEYS.checkwx ? 'configured' : 'missing',
+      icao: API_KEYS.icao ? 'configured' : 'missing',
+      openweather: API_KEYS.openweather ? 'configured' : 'missing',
+      windy: API_KEYS.windy ? 'configured' : 'missing',
+      avwx: API_KEYS.avwx ? 'configured' : 'missing',
+      openaip: API_KEYS.openaip ? 'configured' : 'missing'
+    }
   });
 });
 
@@ -162,16 +170,40 @@ app.get('/api/auth/profile', authenticateUser, async (req, res) => {
 app.get('/api/weather/metar', authenticateUser, async (req, res) => {
   try {
     const { icao } = req.query;
-    
+
     if (!icao) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'ICAO code is required' 
+      return res.status(400).json({
+        success: false,
+        message: 'ICAO code is required'
+      });
+    }
+
+    // Check if API key is available
+    if (!API_KEYS.checkwx) {
+      console.warn('CheckWX API key is missing, falling back to mock data');
+      // Fallback to mock data if API key is missing
+      const mockData = {
+        station: { ident: icao },
+        raw_text: `${icao} 041800Z 27015G25KT 10SM FEW025 22/15 A2992 RMK AO2 SLP132`,
+        observed: new Date().toISOString(),
+        wind: { direction_degrees: 270, speed_kts: 15, gust_kts: 25 },
+        visibility: { miles: '10', meters: '16093' },
+        clouds: [{ code: 'FEW', base_feet_agl: 2500 }],
+        temperature: { celsius: 22, fahrenheit: 72 },
+        dewpoint: { celsius: 15, fahrenheit: 59 },
+        altimeter: { hg: 29.92, hpa: 1013 }
+      };
+
+      return res.json({
+        success: true,
+        code: 'MOCK',
+        message: 'METAR data retrieved (development mode - API key missing)',
+        data: mockData
       });
     }
 
     const checkwxUrl = `https://api.checkwx.com/v1/metar/${icao}/decoded`;
-    
+
     const data = await makeApiRequest(checkwxUrl, {
       headers: {
         'X-API-Key': API_KEYS.checkwx
@@ -186,7 +218,7 @@ app.get('/api/weather/metar', authenticateUser, async (req, res) => {
         data: data.data[0] // CheckWX returns an array
       });
     }
-    
+
     // If API returns success but no data (e.g., invalid ICAO)
     res.status(404).json({
       success: false,
@@ -208,16 +240,45 @@ app.get('/api/weather/metar', authenticateUser, async (req, res) => {
 app.get('/api/weather/taf', authenticateUser, async (req, res) => {
   try {
     const { icao } = req.query;
-    
+
     if (!icao) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'ICAO code is required' 
+      return res.status(400).json({
+        success: false,
+        message: 'ICAO code is required'
+      });
+    }
+
+    // Check if API key is available
+    if (!API_KEYS.checkwx) {
+      console.warn('CheckWX API key is missing, falling back to mock data');
+      // Fallback to mock data if API key is missing
+      const mockData = {
+        station: { ident: icao },
+        raw_text: `TAF ${icao} 041730Z 0418/0524 26015G24KT P6SM FEW040`,
+        issue_time: new Date().toISOString(),
+        valid_time_from: new Date().toISOString(),
+        valid_time_to: new Date(Date.now() + 86400000).toISOString(),
+        forecast: [{
+          timestamp: {
+            from: new Date().toISOString(),
+            to: new Date(Date.now() + 21600000).toISOString()
+          },
+          wind: { direction_degrees: 260, speed_kts: 15, gust_kts: 24 },
+          visibility: { miles: 'P6', meters: '>9999' },
+          clouds: [{ code: 'FEW', base_feet_agl: 4000 }]
+        }]
+      };
+
+      return res.json({
+        success: true,
+        code: 'MOCK',
+        message: 'TAF data retrieved (development mode - API key missing)',
+        data: mockData
       });
     }
 
     const checkwxUrl = `https://api.checkwx.com/v1/taf/${icao}/decoded`;
-    
+
     const data = await makeApiRequest(checkwxUrl, {
       headers: {
         'X-API-Key': API_KEYS.checkwx
@@ -232,7 +293,7 @@ app.get('/api/weather/taf', authenticateUser, async (req, res) => {
         data: data.data[0] // CheckWX returns an array
       });
     }
-    
+
     // If API returns success but no data
     res.status(404).json({
       success: false,
@@ -254,11 +315,11 @@ app.get('/api/weather/taf', authenticateUser, async (req, res) => {
 app.get('/api/notams', authenticateUser, async (req, res) => {
   try {
     const { icao } = req.query;
-    
+
     if (!icao) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'ICAO code is required' 
+      return res.status(400).json({
+        success: false,
+        message: 'ICAO code is required'
       });
     }
 
@@ -372,11 +433,11 @@ app.post('/api/pireps', authenticateUser, async (req, res) => {
 app.get('/api/airports', authenticateUser, async (req, res) => {
   try {
     const { icao } = req.query;
-    
+
     if (!icao) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'ICAO code is required' 
+      return res.status(400).json({
+        success: false,
+        message: 'ICAO code is required'
       });
     }
 
@@ -422,7 +483,7 @@ app.get('/api/airports', authenticateUser, async (req, res) => {
 app.get('/api/airports/all', authenticateUser, async (req, res) => {
   try {
     const { minLat, maxLat, minLng, maxLng } = req.query;
-    
+
     let query = supabase
       .from('airports')
       .select('*');
@@ -458,7 +519,6 @@ app.get('/api/airports/all', authenticateUser, async (req, res) => {
     });
   }
 });
-
 
 // Admin route to load airport data
 app.post('/api/admin/load-airports', authenticateUser, authorizeAdmin, async (req, res) => {
@@ -565,7 +625,6 @@ app.delete('/api/admin/users/:id', authenticateUser, authorizeAdmin, async (req,
         res.status(500).json({ success: false, message: 'Failed to delete user.' });
     }
 });
-
 
 // Save Flight Plan (Supabase Integration)
 app.post('/api/flight-plans', authenticateUser, async (req, res) => {
